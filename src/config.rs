@@ -47,8 +47,15 @@ mod test {
 
     #[test]
     fn parse_config_arg() {
+        let data = include_bytes!("test_data/config.toml");
+
+        let tmp_dir = TempDir::new("proxysaur").expect("should create the temp dir");
+        let file_path = tmp_dir.path().join("proxysaur.toml");
+        let mut tmp_file = File::create(file_path.clone()).expect("should create the file");
+        tmp_file.write_all(data).expect("should write the data");
+
         let args = Args {
-            config_path: Some(PathBuf::from("src/test_data/config.toml")),
+            config_path: Some(file_path),
         };
         let config = Config::try_from(args).expect("should build the config object");
         assert_eq!(config.proxy.len(), 3);
