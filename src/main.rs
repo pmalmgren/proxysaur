@@ -2,37 +2,30 @@ use anyhow::Result;
 use clap::StructOpt;
 use config::{Args, Config, Proxy};
 use futures::future::{join_all, try_join_all};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
-};
+use tokio::net::{TcpListener, TcpStream};
 
 mod config;
 
-async fn respond(socket: &mut TcpStream) {
-    let resp = "goodbye".as_bytes();
-    match socket.write(resp).await {
-        Ok(nwrote) => eprintln!("Wrote bytes: {nwrote}"),
-        Err(err) => eprintln!("Error writing bytes: {err}"),
-    };
+async fn tunnel(socket: &mut TcpStream, upstream: &mut TcpStream) -> Result<()> {
+    tokio::io::copy_bidirectional(upstream, socket)
+        .await
+        .map(|_| ())
+        .map_err(anyhow::Error::from)
 }
 
-async fn proxy_conn(mut socket: TcpStream) {
-    let mut buf = vec![0; 1024];
-    match socket.read(&mut buf).await {
-        Ok(nread) => {
-            eprintln!("Read bytes: {nread}");
-            respond(&mut socket).await;
-        }
-        Err(err) => eprintln!("Error reading bytes: {err}"),
-    }
+async fn proxy_conn(mut socket: TcpStream, proxy: Proxy) -> Result<()> {
+    let mut upstream = TcpStream::connect(&proxy.upstream_address()).await?;
+    tunnel(&mut socket, &mut upstream).await
 }
 
-async fn listen(listener: TcpListener, _proxy: Proxy) {
+async fn listen(listener: TcpListener, proxy: Proxy) {
     loop {
         let (socket, _) = listener.accept().await.unwrap();
+        let proxy = proxy.clone();
         tokio::spawn(async move {
-            proxy_conn(socket).await;
+            if let Err(err) = proxy_conn(socket, proxy).await {
+                eprintln!("Error proxying the connection: {err}");
+            }
         });
     }
 }
