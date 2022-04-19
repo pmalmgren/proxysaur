@@ -2,7 +2,6 @@ on:
   push:
     branches: ["main", "proxysaur-*.x"]
   pull_request:
-    branches: ["main", "proxysaur-*.x"]
 
 name: CI
 
