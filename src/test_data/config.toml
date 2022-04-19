@@ -1,0 +1,11 @@
+[[proxy]]
+wasi_module_path = "/tmp/wasi1.wasm"
+port = 92
+
+[[proxy]]
+wasi_module_path = "/tmp/wasi2.wasm"
+port = 93
+
+[[proxy]]
+wasi_module_path = "/tmp/wasi3.wasm"
+port = 94
