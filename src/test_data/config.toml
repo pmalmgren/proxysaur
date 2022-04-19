@@ -5,7 +5,9 @@ port = 92
 [[proxy]]
 wasi_module_path = "/tmp/wasi2.wasm"
 port = 93
+address = "proxysaur.us"
 
 [[proxy]]
 wasi_module_path = "/tmp/wasi3.wasm"
 port = 94
+address = "0.0.0.0"

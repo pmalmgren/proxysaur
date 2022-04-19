@@ -21,7 +21,16 @@ pub struct Proxy {
     pub wasi_module_path: PathBuf,
     pub port: u16,
     #[serde(default = "default_address")]
-    pub address: String,
+    address: String,
+}
+
+impl Proxy {
+    pub fn address(&self) -> String {
+        let mut addr = self.address.clone();
+        addr.push(':');
+        addr.push_str(&self.port.to_string());
+        addr
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -46,13 +55,12 @@ impl TryFrom<Args> for Config {
 
 #[cfg(test)]
 mod test {
-    use std::{fs::File, io::Write};
+    use std::{fs::File, io::Write, path::PathBuf};
     use tempdir::TempDir;
 
     use super::{Args, Config};
 
-    #[test]
-    fn parse_config_arg() {
+    fn test_data() -> (TempDir, PathBuf) {
         let data = include_bytes!("test_data/config.toml");
 
         let tmp_dir = TempDir::new("proxysaur").expect("should create the temp dir");
@@ -60,24 +68,27 @@ mod test {
         let mut tmp_file = File::create(file_path.clone()).expect("should create the file");
         tmp_file.write_all(data).expect("should write the data");
 
+        (tmp_dir, file_path)
+    }
+
+    #[test]
+    fn parse_config_arg() {
+        let (_tmp_dir, file_path) = test_data();
         let args = Args {
             config_path: Some(file_path),
         };
         let config = Config::try_from(args).expect("should build the config object");
         assert_eq!(config.proxy.len(), 3);
+        assert_eq!(&config.proxy[0].address(), "127.0.0.1:92");
+        assert_eq!(&config.proxy[1].address(), "proxysaur.us:93");
+        assert_eq!(&config.proxy[2].address(), "0.0.0.0:94");
     }
 
     #[test]
     fn parse_config_arg_no_path() {
+        let (tmp_dir, _file_path) = test_data();
         let args = Args { config_path: None };
-        let data = include_bytes!("test_data/config.toml");
-
-        let tmp_dir = TempDir::new("proxysaur").expect("should create the temp dir");
         std::env::set_current_dir(tmp_dir.path()).expect("should set the current directory");
-        let file_path = tmp_dir.path().join("proxysaur.toml");
-        let mut tmp_file = File::create(file_path).expect("should create the file");
-        tmp_file.write_all(data).expect("should write the data");
-
         let config = Config::try_from(args).expect("should build the config object");
         assert_eq!(config.proxy.len(), 3);
     }
