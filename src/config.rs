@@ -40,7 +40,7 @@ impl TryFrom<Args> for Config {
 
 #[cfg(test)]
 mod test {
-    use std::{fs::File, io::Write, path::PathBuf};
+    use std::{fs::File, io::Write};
     use tempdir::TempDir;
 
     use super::{Args, Config};
