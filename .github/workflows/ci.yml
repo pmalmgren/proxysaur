@@ -1,0 +1,71 @@
+on:
+  push:
+    branches: ["main", "proxysaur-*.x"]
+  pull_request:
+    branches: ["main", "proxysaur-*.x"]
+
+name: CI
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  rust_version: 1.60.0
+
+jobs:
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust ${{ env.rust_version }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.rust_version }}
+          override: true
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v1
+      - name: "rustfmt --check"
+        run: |
+          if ! rustfmt --check --edition 2021 $(git ls-files '*.rs'); then
+            printf "Please run \`rustfmt --edition 2021 \$(git ls-files '*.rs')\` to fix rustfmt errors.\n" >&2
+            exit 1
+          fi
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust ${{ env.rust_version }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.rust_version }}
+          override: true
+          components: clippy
+      - uses: Swatinem/rust-cache@v1
+      - name: "clippy --all"
+        run: cargo clippy --all --tests --all-features -- -D warnings
+
+  test:
+    name: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          # TODO: Add these other OS(s)
+          # - windows-latest
+          # - macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust ${{ env.rust_version }}
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: ${{ env.rust_version }}
+            override: true
+      - name: Install Rust
+        run: rustup update ${{ env.rust_version }}
+      - name: unit test
+        run: cargo test

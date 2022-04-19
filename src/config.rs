@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// A network debugging proxy powered by WebAssembly
 #[derive(Parser, Debug)]
@@ -27,29 +27,29 @@ impl TryFrom<Args> for Config {
     type Error = anyhow::Error;
 
     fn try_from(value: Args) -> Result<Self, Self::Error> {
-        let path = value
-            .config_path
-            .map(|v| Ok(v))
-            .unwrap_or_else(|| std::env::current_dir().map(|mut path| {
+        let path = value.config_path.map(Ok).unwrap_or_else(|| {
+            std::env::current_dir().map(|mut path| {
                 path.push("proxysaur.toml");
                 path
-            }))?;
+            })
+        })?;
         let contents = std::fs::read(path)?;
-        toml::from_slice(&contents)
-            .map_err(anyhow::Error::from)
+        toml::from_slice(&contents).map_err(anyhow::Error::from)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::{path::PathBuf, fs::File, io::Write};
+    use std::{fs::File, io::Write, path::PathBuf};
     use tempdir::TempDir;
 
     use super::{Args, Config};
 
     #[test]
     fn parse_config_arg() {
-        let args = Args { config_path: Some(PathBuf::from("src/test_data/config.toml")) };
+        let args = Args {
+            config_path: Some(PathBuf::from("src/test_data/config.toml")),
+        };
         let config = Config::try_from(args).expect("should build the config object");
         assert_eq!(config.proxy.len(), 3);
     }
@@ -64,7 +64,6 @@ mod test {
         let file_path = tmp_dir.path().join("proxysaur.toml");
         let mut tmp_file = File::create(file_path).expect("should create the file");
         tmp_file.write_all(data).expect("should write the data");
-
 
         let config = Config::try_from(args).expect("should build the config object");
         assert_eq!(config.proxy.len(), 3);
