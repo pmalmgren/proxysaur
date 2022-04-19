@@ -12,10 +12,16 @@ pub struct Args {
     pub config_path: Option<PathBuf>,
 }
 
+fn default_address() -> String {
+    "127.0.0.1".into()
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Proxy {
     pub wasi_module_path: PathBuf,
     pub port: u16,
+    #[serde(default = "default_address")]
+    pub address: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
