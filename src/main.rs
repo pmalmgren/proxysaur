@@ -3,10 +3,15 @@ use clap::StructOpt;
 use config::{Args, Config};
 
 mod config;
+mod proxy;
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
+    let subscriber = tracing_subscriber::fmt::Subscriber::new();
+    tracing::subscriber::set_global_default(subscriber).expect("should set subscriber");
+
     let args = Args::parse();
-    let _config = Config::try_from(args)?;
+    let config = Config::try_from(args)?;
 
-    Ok(())
+    proxy::run(config).await
 }
