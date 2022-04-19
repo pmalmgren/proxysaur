@@ -4,6 +4,7 @@ use config::{Args, Config};
 
 mod config;
 mod proxy;
+mod wasi;
 
 #[tokio::main]
 async fn main() -> Result<()> {
