@@ -22,6 +22,8 @@ pub struct Proxy {
     pub port: u16,
     #[serde(default = "default_address")]
     address: String,
+    upstream_address: String,
+    upstream_port: u16,
 }
 
 impl Proxy {
@@ -29,6 +31,13 @@ impl Proxy {
         let mut addr = self.address.clone();
         addr.push(':');
         addr.push_str(&self.port.to_string());
+        addr
+    }
+
+    pub fn upstream_address(&self) -> String {
+        let mut addr = self.upstream_address.clone();
+        addr.push(':');
+        addr.push_str(&self.upstream_port.to_string());
         addr
     }
 }
@@ -82,6 +91,9 @@ mod test {
         assert_eq!(&config.proxy[0].address(), "127.0.0.1:92");
         assert_eq!(&config.proxy[1].address(), "proxysaur.us:93");
         assert_eq!(&config.proxy[2].address(), "0.0.0.0:94");
+        assert_eq!(&config.proxy[0].upstream_address(), "127.0.0.1:5432");
+        assert_eq!(&config.proxy[1].upstream_address(), "127.0.0.1:8000");
+        assert_eq!(&config.proxy[2].upstream_address(), "127.0.0.1:8001");
     }
 
     #[test]
