@@ -1132,6 +1132,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "proxysaur"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "futures",
+ "serde",
+ "tempdir",
+ "tokio",
+ "tokio-native-tls",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "wasmtime",
+ "wasmtime-wasi",
+]
+
+[[package]]
 name = "psm"
 version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1773,24 +1791,6 @@ dependencies = [
  "tracing",
  "wiggle",
  "winapi",
-]
-
-[[package]]
-name = "wasi-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "futures",
- "serde",
- "tempdir",
- "tokio",
- "tokio-native-tls",
- "toml",
- "tracing",
- "tracing-subscriber",
- "wasmtime",
- "wasmtime-wasi",
 ]
 
 [[package]]
