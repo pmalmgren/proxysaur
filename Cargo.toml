@@ -3,7 +3,10 @@ name = "proxysaur"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+
 [dependencies]
+protocol-interfaces = { path = "protocol-interfaces" }
 anyhow = "1.0.56"
 clap = { version = "3.1.9", features = ["derive"] }
 futures = "0.3.21"

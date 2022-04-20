@@ -1,0 +1,6 @@
+use * from types
+
+http-request-get: function() -> expected<http-request, error>
+http-request-set: function(req: http-request) -> expected<_, error>
+http-request-body-get: function() -> expected<body, error>
+http-request-body-set: function(body: body) -> expected<_, error>

@@ -1,0 +1,19 @@
+type http-headers = list<tuple<string, string>>
+type error = string
+type body = list<u8>
+type http-method = string
+
+record http-response {
+    headers: http-headers,
+    status: u16
+}
+
+record http-request {
+    path: string,
+    authority: string,
+    host: string,
+    scheme: string,
+    version: string,
+    headers: http-headers,
+    method: http-method
+}
