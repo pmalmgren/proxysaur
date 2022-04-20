@@ -1,8 +1,13 @@
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use anyhow::Result;
 use tokio::sync::RwLock;
-use wasmtime::{Config, Engine, Module};
+use wasmtime::{Config, Engine, Linker, Module, Store};
+use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
 
 #[derive(Clone)]
 pub struct WasiRuntime {
@@ -20,24 +25,39 @@ impl WasiRuntime {
         })
     }
 
-    pub async fn fetch_module(&mut self, path: PathBuf, engine: &Engine) -> Result<Module> {
-        let (module, hit) = {
+    pub async fn fetch_module(&mut self, path: &Path) -> Result<Module> {
+        let module = {
             let cache = self.module_cache.read().await;
-            match cache.get(&path) {
-                Some(module) => (module.clone(), true),
-                None => {
-                    let contents = tokio::fs::read(path.clone()).await?;
-                    let module = Module::new(engine, contents)?;
-                    (module, false)
-                }
-            }
+            cache.get(&path.to_path_buf()).cloned()
         };
 
-        if !hit {
-            let mut cache = self.module_cache.write().await;
-            cache.insert(path, module.clone());
+        match module {
+            Some(module) => Ok(module),
+            None => {
+                let contents = tokio::fs::read(path).await?;
+                let module = Module::new(&self.engine, contents)?;
+                let mut cache = self.module_cache.write().await;
+                cache.insert(path.to_path_buf(), module.clone());
+                Ok(module)
+            }
         }
+    }
 
-        Ok(module)
+    pub async fn process_request(&mut self, buf: Vec<u8>, path: &Path) -> Result<Vec<u8>> {
+        let mut linker: Linker<WasiCtx> = Linker::new(&self.engine);
+        wasmtime_wasi::add_to_linker(&mut linker, |s| s)?;
+        let wasi = WasiCtxBuilder::new()
+            .inherit_stdio()
+            .inherit_args()?
+            .build();
+        let mut store = Store::new(&self.engine, wasi);
+        let module = self.fetch_module(path).await?;
+        linker.module(&mut store, "", &module)?;
+        linker
+            .get_default(&mut store, "")?
+            .typed::<(), (), _>(&store)?
+            .call(&mut store, ())?;
+
+        Ok(buf)
     }
 }
