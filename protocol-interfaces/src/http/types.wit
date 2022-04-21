@@ -5,7 +5,8 @@ type http-method = string
 
 record http-response {
     headers: http-headers,
-    status: u16
+    status: u16,
+    body: body
 }
 
 record http-request {
@@ -15,5 +16,6 @@ record http-request {
     scheme: string,
     version: string,
     headers: http-headers,
-    method: http-method
+    method: http-method,
+    body: body
 }
