@@ -1,6 +1,6 @@
 use request::HttpRequest;
 
-wit_bindgen_rust::import!("../../../protocols/src/http/request.wit");
+wit_bindgen_rust::import!("../../request.wit");
 
 fn main() {
     let request: HttpRequest = request::http_request_get().expect("should get the request");

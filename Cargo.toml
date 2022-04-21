@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
+exclude = ["protocols/src/http/tests/http-request"]
 
 [dependencies]
 protocols = { path = "protocols" }
