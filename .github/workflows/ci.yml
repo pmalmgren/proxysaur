@@ -64,6 +64,7 @@ jobs:
         with:
             toolchain: ${{ env.rust_version }}
             override: true
+            lfs: true
       - name: Install Rust
         run: rustup update ${{ env.rust_version }}
       - name: unit test
