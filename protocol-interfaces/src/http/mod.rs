@@ -1,4 +1,5 @@
-use http::Uri;
+use http::{Request, Uri, Version};
+use hyper::Body;
 use thiserror::Error;
 
 pub use self::request::add_to_linker;
@@ -8,14 +9,48 @@ mod request;
 mod response;
 
 #[derive(Error, Debug)]
-pub enum HttpProtocolError {}
+pub enum ProxyHttpError {
+    #[error(transparent)]
+    HyperError(#[from] hyper::Error),
+    #[error(transparent)]
+    HttpError(#[from] http::Error),
+    #[error("invalid version: {0}")]
+    InvalidVersion(String),
+}
 
 pub struct ProxyHttpRequest {
     request: HttpRequest,
 }
 
-impl From<http::Request<Vec<u8>>> for ProxyHttpRequest {
-    fn from(req: http::Request<Vec<u8>>) -> Self {
+fn convert_version(version: &str) -> Result<Version, ProxyHttpError> {
+    match version {
+        "HTTP/0.9" => Ok(Version::HTTP_09),
+        "HTTP/1.0" => Ok(Version::HTTP_10),
+        "HTTP/1.1" => Ok(Version::HTTP_11),
+        "HTTP/2.0" => Ok(Version::HTTP_2),
+        "HTTP/3.0" => Ok(Version::HTTP_3),
+        _ => Err(ProxyHttpError::InvalidVersion(version.to_string())),
+    }
+}
+
+impl TryFrom<ProxyHttpRequest> for Request<Body> {
+    type Error = ProxyHttpError;
+
+    fn try_from(req: ProxyHttpRequest) -> Result<Self, Self::Error> {
+        let request = req.request;
+        let body = Body::from(request.body);
+        let request = Request::builder()
+            .method(request.method.as_str())
+            .version(convert_version(&request.version)?)
+            .body(body)
+            .map_err(ProxyHttpError::from)?;
+
+        Ok(request)
+    }
+}
+
+impl ProxyHttpRequest {
+    pub async fn new(req: http::Request<Body>) -> Result<Self, ProxyHttpError> {
         let (parts, body) = req.into_parts();
         let uri = parts.uri;
         let host = uri.host().map(String::from).unwrap_or_else(String::new);
@@ -38,6 +73,7 @@ impl From<http::Request<Vec<u8>>> for ProxyHttpRequest {
                 Err(_) => None,
             })
             .collect();
+        let body = hyper::body::to_bytes(body).await?.to_vec();
         let request = HttpRequest {
             path,
             authority,
@@ -48,7 +84,7 @@ impl From<http::Request<Vec<u8>>> for ProxyHttpRequest {
             host,
             body,
         };
-        Self { request }
+        Ok(Self { request })
     }
 }
 

@@ -5,14 +5,23 @@ use std::{
 };
 
 use anyhow::Result;
+use hyper::{Body, Request};
+use protocol_interfaces::http::ProxyHttpRequest;
 use tokio::sync::RwLock;
 use wasmtime::{Config, Engine, Linker, Module, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
+
+use crate::config::Proxy;
 
 #[derive(Clone)]
 pub struct WasiRuntime {
     engine: Engine,
     module_cache: Arc<RwLock<HashMap<PathBuf, Module>>>,
+}
+
+struct Context {
+    wasi: WasiCtx,
+    proxy_request: ProxyHttpRequest,
 }
 
 impl WasiRuntime {
@@ -43,21 +52,39 @@ impl WasiRuntime {
         }
     }
 
-    pub async fn process_request(&mut self, buf: Vec<u8>, path: &Path) -> Result<Vec<u8>> {
-        let mut linker: Linker<WasiCtx> = Linker::new(&self.engine);
-        wasmtime_wasi::add_to_linker(&mut linker, |s| s)?;
+    pub async fn process_request(
+        &mut self,
+        req: Request<Body>,
+        proxy: Proxy,
+    ) -> Result<Request<Body>> {
+        let proxy_request = ProxyHttpRequest::new(req).await?;
+        let module = self.fetch_module(&proxy.wasi_module_path).await?;
+
+        let mut linker: Linker<Context> = Linker::new(&self.engine);
         let wasi = WasiCtxBuilder::new()
             .inherit_stdio()
             .inherit_args()?
             .build();
-        let mut store = Store::new(&self.engine, wasi);
-        let module = self.fetch_module(path).await?;
+        let ctx = Context {
+            wasi,
+            proxy_request,
+        };
+
+        let mut store: Store<Context> = Store::new(&self.engine, ctx);
+        wasmtime_wasi::add_to_linker(&mut linker, |s| &mut s.wasi)?;
+
+        protocol_interfaces::http::add_to_linker(&mut linker, |ctx| -> &mut ProxyHttpRequest {
+            &mut ctx.proxy_request
+        })?;
+
         linker.module(&mut store, "", &module)?;
         linker
             .get_default(&mut store, "")?
             .typed::<(), (), _>(&store)?
             .call(&mut store, ())?;
 
-        Ok(buf)
+        let data = store.into_data();
+        let new_request: Request<Body> = Request::try_from(data.proxy_request)?;
+        Ok(new_request)
     }
 }

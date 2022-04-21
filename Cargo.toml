@@ -10,6 +10,7 @@ protocol-interfaces = { path = "protocol-interfaces" }
 anyhow = "1.0.56"
 clap = { version = "3.1.9", features = ["derive"] }
 futures = "0.3.21"
+hyper = { version = "0.14", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.17.0", features = ["full"] }
 tokio-native-tls = "0.3.0"
