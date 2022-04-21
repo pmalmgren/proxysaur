@@ -35,6 +35,25 @@ pub struct Proxy {
 }
 
 impl Proxy {
+    #[cfg(test)]
+    pub fn new_for_test(
+        wasi_module_path: PathBuf,
+        port: u16,
+        protocol: Protocol,
+        address: String,
+        upstream_address: String,
+        upstream_port: u16,
+    ) -> Self {
+        Self {
+            wasi_module_path,
+            port,
+            protocol,
+            address,
+            upstream_address,
+            upstream_port,
+        }
+    }
+
     pub fn address(&self) -> String {
         let mut addr = self.address.clone();
         addr.push(':');
@@ -79,8 +98,8 @@ mod test {
 
     use super::{Args, Config};
 
-    fn test_data() -> (TempDir, PathBuf) {
-        let data = include_bytes!("test_data/config.toml");
+    fn tests() -> (TempDir, PathBuf) {
+        let data = include_bytes!("tests/config.toml");
 
         let tmp_dir = TempDir::new("proxysaur").expect("should create the temp dir");
         let file_path = tmp_dir.path().join("proxysaur.toml");
@@ -92,7 +111,7 @@ mod test {
 
     #[test]
     fn parse_config_arg() {
-        let (_tmp_dir, file_path) = test_data();
+        let (_tmp_dir, file_path) = tests();
         let args = Args {
             config_path: Some(file_path),
         };
@@ -109,7 +128,7 @@ mod test {
 
     #[test]
     fn parse_config_arg_no_path() {
-        let (tmp_dir, _file_path) = test_data();
+        let (tmp_dir, _file_path) = tests();
         let args = Args { config_path: None };
         std::env::set_current_dir(tmp_dir.path()).expect("should set the current directory");
         let config = Config::try_from(args).expect("should build the config object");

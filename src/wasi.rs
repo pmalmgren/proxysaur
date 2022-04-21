@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::Result;
 use hyper::{Body, Request};
-use protocol_interfaces::http::ProxyHttpRequest;
+use protocols::http::ProxyHttpRequest;
 use tokio::sync::RwLock;
 use wasmtime::{Config, Engine, Linker, Module, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
@@ -26,15 +26,15 @@ struct Context {
 
 impl WasiRuntime {
     pub fn new() -> Result<Self> {
-        let mut config = Config::new();
-        let config = config.async_support(true).epoch_interruption(true);
+        let config = Config::new();
         Ok(Self {
-            engine: Engine::new(config)?,
+            engine: Engine::new(&config)?,
             module_cache: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
     pub async fn fetch_module(&mut self, path: &Path) -> Result<Module> {
+        println!("path = {:?}", path);
         let module = {
             let cache = self.module_cache.read().await;
             cache.get(&path.to_path_buf()).cloned()
@@ -43,7 +43,13 @@ impl WasiRuntime {
         match module {
             Some(module) => Ok(module),
             None => {
-                let contents = tokio::fs::read(path).await?;
+                let contents = match tokio::fs::read(path).await {
+                    Ok(contents) => Ok(contents),
+                    Err(err) => {
+                        println!("Error reading file: {err}");
+                        Err(err)
+                    }
+                }?;
                 let module = Module::new(&self.engine, contents)?;
                 let mut cache = self.module_cache.write().await;
                 cache.insert(path.to_path_buf(), module.clone());
@@ -73,7 +79,7 @@ impl WasiRuntime {
         let mut store: Store<Context> = Store::new(&self.engine, ctx);
         wasmtime_wasi::add_to_linker(&mut linker, |s| &mut s.wasi)?;
 
-        protocol_interfaces::http::add_to_linker(&mut linker, |ctx| -> &mut ProxyHttpRequest {
+        protocols::http::add_to_linker(&mut linker, |ctx| -> &mut ProxyHttpRequest {
             &mut ctx.proxy_request
         })?;
 
@@ -86,5 +92,46 @@ impl WasiRuntime {
         let data = store.into_data();
         let new_request: Request<Body> = Request::try_from(data.proxy_request)?;
         Ok(new_request)
+    }
+}
+
+#[cfg(test)]
+mod http_test {
+    use hyper::{Body, Request};
+
+    use crate::config::{Protocol, Proxy};
+
+    use super::WasiRuntime;
+
+    #[tokio::test]
+    async fn processes_request() {
+        let request = Request::builder()
+            .method("get")
+            .body(Body::from("hello"))
+            .expect("should build the request");
+
+        let mut wasi_path = std::env::current_dir().expect("should get the current directory");
+        wasi_path.push("src/tests/http-request/target/wasm32-wasi/debug/http-request.wasm");
+        let mut wasi_runtime = WasiRuntime::new().expect("should build the runtime");
+        let proxy = Proxy::new_for_test(
+            wasi_path,
+            8080,
+            Protocol::Http,
+            "google.com".into(),
+            "google.com".into(),
+            8080,
+        );
+        let new_request = wasi_runtime
+            .process_request(request, proxy)
+            .await
+            .expect("should process the request");
+
+        let (parts, body) = new_request.into_parts();
+        assert_eq!(parts.method, "post");
+        let body = hyper::body::to_bytes(body)
+            .await
+            .expect("should read the body");
+        let body_str = std::str::from_utf8(&body).expect("should convert to text");
+        assert_eq!(body_str, "haha!");
     }
 }
