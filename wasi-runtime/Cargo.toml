@@ -1,9 +1,13 @@
 [package]
-name = "http-request"
+name = "wasi-runtime"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-wit-bindgen-rust = { git = "https://github.com/bytecodealliance/wit-bindgen", rev = "43411623c132801a2ac1bfc338e9b988e9a8bacb" }
+anyhow = "1.0.56"
+tokio = { version = "1.17.0", features = ["full"] }
+tracing = "0.1.34"
+wasmtime = "0.35.3"
+wasmtime-wasi = "0.35.3"

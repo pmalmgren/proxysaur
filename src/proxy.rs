@@ -1,17 +1,13 @@
-use std::convert::Infallible;
-
 use anyhow::Result;
 use futures::future::{join_all, try_join_all};
-use hyper::{server::conn::Http, service::service_fn, Body, Request, Response};
+use protocols::http::proxy::http_proxy;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
+use wasi_runtime::WasiRuntime;
 
-use crate::{
-    config::{Config, Protocol, Proxy},
-    wasi::WasiRuntime,
-};
+use crate::config::{Config, Protocol, Proxy};
 
 pub async fn run(config: Config) -> Result<()> {
     let futures = config
@@ -32,37 +28,6 @@ pub async fn run(config: Config) -> Result<()> {
             }),
     )
     .await;
-
-    Ok(())
-}
-
-async fn http_proxy_service(
-    req: Request<Body>,
-    proxy: Proxy,
-    mut wasi_runtime: WasiRuntime,
-) -> Result<Response<Body>, Infallible> {
-    match wasi_runtime.process_request(req, proxy).await {
-        Ok(request) => {
-            tracing::info!(new_request = ?request, "New request.");
-        }
-        Err(err) => {
-            tracing::error!(?err, "Error making new request.");
-        }
-    };
-
-    Ok(Response::new(Body::from("hello")))
-}
-
-async fn http_proxy(socket: TcpStream, proxy: Proxy, wasi_runtime: WasiRuntime) -> Result<()> {
-    let service = service_fn(|request: Request<Body>| {
-        let proxy = proxy.clone();
-        let wasi_runtime = wasi_runtime.clone();
-        async move { http_proxy_service(request, proxy, wasi_runtime).await }
-    });
-
-    if let Err(http_err) = Http::new().serve_connection(socket, service).await {
-        tracing::error!(%http_err, "Error while serving HTTP connection");
-    }
 
     Ok(())
 }
@@ -134,7 +99,7 @@ async fn proxy_conn(mut socket: TcpStream, proxy: Proxy, wasi_runtime: WasiRunti
             let mut upstream = TcpStream::connect(&proxy.upstream_address()).await?;
             tunnel(&mut socket, &mut upstream, proxy, wasi_runtime).await
         }
-        Protocol::Http => http_proxy(socket, proxy, wasi_runtime).await,
+        Protocol::Http => http_proxy(socket, &proxy.wasi_module_path, wasi_runtime).await,
     }
 }
 

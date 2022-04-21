@@ -35,25 +35,6 @@ pub struct Proxy {
 }
 
 impl Proxy {
-    #[cfg(test)]
-    pub fn new_for_test(
-        wasi_module_path: PathBuf,
-        port: u16,
-        protocol: Protocol,
-        address: String,
-        upstream_address: String,
-        upstream_port: u16,
-    ) -> Self {
-        Self {
-            wasi_module_path,
-            port,
-            protocol,
-            address,
-            upstream_address,
-            upstream_port,
-        }
-    }
-
     pub fn address(&self) -> String {
         let mut addr = self.address.clone();
         addr.push(':');
@@ -130,8 +111,11 @@ mod test {
     fn parse_config_arg_no_path() {
         let (tmp_dir, _file_path) = tests();
         let args = Args { config_path: None };
+        let current_dir = std::env::current_dir().expect("should get the current directory");
         std::env::set_current_dir(tmp_dir.path()).expect("should set the current directory");
-        let config = Config::try_from(args).expect("should build the config object");
+        let config = Config::try_from(args);
+        std::env::set_current_dir(current_dir).expect("should set directory back");
+        let config = config.expect("should parse the config");
         assert_eq!(config.proxy.len(), 3);
     }
 }

@@ -8,6 +8,8 @@ use self::request::HttpRequest;
 mod request;
 mod response;
 
+pub mod proxy;
+
 #[derive(Error, Debug)]
 pub enum ProxyHttpError {
     #[error(transparent)]

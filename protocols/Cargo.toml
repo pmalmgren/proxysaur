@@ -6,7 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.56"
+wasi-runtime = { path = "../wasi-runtime" }
 http = "0.2"
 hyper = { version = "0.14", features = ["full"] }
 thiserror = "1.0.30"
+tokio = { version = "1.17.0", features = ["full"] }
+tracing = "0.1.34"
 wit-bindgen-wasmtime = { git = "https://github.com/bytecodealliance/wit-bindgen", rev = "43411623c132801a2ac1bfc338e9b988e9a8bacb", features = ["async"] }
