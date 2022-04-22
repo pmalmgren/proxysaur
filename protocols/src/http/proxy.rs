@@ -58,9 +58,9 @@ async fn process_request(
     scheme: &str,
     host: &str,
 ) -> Result<Request<Body>> {
-    tracing::info!("Building request.");
+    tracing::trace!("Building request.");
     let proxy_request = ProxyHttpRequest::new(req, scheme, host).await?;
-    tracing::info!(?proxy_request, "Built request.");
+    tracing::trace!(?proxy_request, "Built request.");
     let module = wasi_runtime.fetch_module(wasi_module_path).await?;
 
     let mut linker: Linker<RequestContext> = Linker::new(&wasi_runtime.engine);
@@ -68,7 +68,7 @@ async fn process_request(
         .inherit_stdio()
         .inherit_args()?
         .build();
-    tracing::info!("Built WASI context.");
+    tracing::trace!("Built WASI context.");
     let ctx = RequestContext {
         wasi,
         proxy_request,
@@ -76,25 +76,25 @@ async fn process_request(
 
     let mut store: Store<RequestContext> = Store::new(&wasi_runtime.engine, ctx);
     wasi_runtime::add_to_linker(&mut linker, |s| &mut s.wasi)?;
-    tracing::info!("Linked module.");
+    tracing::trace!("Linked module.");
 
     request_add_to_linker(&mut linker, |ctx| -> &mut ProxyHttpRequest {
         &mut ctx.proxy_request
     })?;
-    tracing::info!("Linked module with WIT.");
+    tracing::trace!("Linked module with WIT.");
 
     linker.module(&mut store, "", &module)?;
-    tracing::info!("Added module to linker.");
+    tracing::trace!("Added module to linker.");
     linker
         .get_default(&mut store, "")?
         .typed::<(), (), _>(&store)?
         .call(&mut store, ())?;
-    tracing::info!("Called WASI module.");
+    tracing::trace!("Called WASI module.");
 
     let data = store.into_data();
-    tracing::info!("Fetched request context from store.");
+    tracing::trace!("Fetched request context from store.");
     let new_request: Request<Body> = Request::try_from(data.proxy_request)?;
-    tracing::info!(?new_request, "Built new request.");
+    tracing::trace!(?new_request, "Built new request.");
     Ok(new_request)
 }
 
@@ -144,14 +144,14 @@ async fn negotiate_version(scheme: String, host: String, context: &HttpContext) 
         .uri(uri)
         .method("HEAD")
         .body(Body::from(""))?;
-    tracing::info!(?head_req, "Built HEAD request for negotiation");
+    tracing::trace!(?head_req, "Built HEAD request for negotiation");
     match context.client_h2.request(head_req).await {
         Ok(resp) => {
             tracing::debug!(?resp, "Received HEAD response from server.");
             Ok(resp.version())
         }
         Err(error) => {
-            tracing::warn!(%error, "Received error when connecting to client. Assuming HTTP/1.1");
+            tracing::debug!(%error, "Received error when connecting to client. Assuming HTTP/1.1");
             Ok(Version::HTTP_11)
         }
     }
@@ -218,7 +218,10 @@ async fn http_proxy_service(
     };
 
     match process_response(&mut wasi_runtime, resp, resp_wasi_module_path).await {
-        Ok(resp) => Ok(resp),
+        Ok(resp) => {
+            tracing::info!(new_response = ?resp, "New response.");
+            Ok(resp)
+        }
         Err(err) => {
             tracing::error!(?err, "Error processing respones from WASM.");
             Ok(error_payload(err))
