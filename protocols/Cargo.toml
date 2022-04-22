@@ -10,6 +10,8 @@ anyhow = "1.0.56"
 wasi-runtime = { path = "../wasi-runtime" }
 http = "0.2"
 hyper = { version = "0.14", features = ["full"] }
+hyper-alpn = "0.3.0"
+hyper-tls = "0.5.0"
 thiserror = "1.0.30"
 tokio = { version = "1.17.0", features = ["full"] }
 tracing = "0.1.34"

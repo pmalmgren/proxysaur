@@ -1,6 +1,6 @@
 use anyhow::Result;
 use futures::future::{join_all, try_join_all};
-use protocols::http::proxy::http_proxy;
+use protocols::http::proxy::{http_proxy, HttpContext};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -17,14 +17,15 @@ pub async fn run(config: Config) -> Result<()> {
 
     let listeners = try_join_all(futures).await?;
 
+    let http_context = HttpContext::new();
     let wasi_runtime = WasiRuntime::new()?;
 
     let _handle = join_all(
         listeners
             .into_iter()
-            .map(|(listener, proxy)| (listener, proxy, wasi_runtime.clone()))
-            .map(|(listener, proxy, wasi_runtime)| async move {
-                listen(listener, proxy, wasi_runtime).await
+            .map(|(listener, proxy)| (listener, proxy, wasi_runtime.clone(), http_context.clone()))
+            .map(|(listener, proxy, wasi_runtime, context)| async move {
+                listen(listener, proxy, wasi_runtime, context).await
             }),
     )
     .await;
@@ -93,23 +94,51 @@ async fn tunnel(
     Ok(())
 }
 
-async fn proxy_conn(mut socket: TcpStream, proxy: Proxy, wasi_runtime: WasiRuntime) -> Result<()> {
+async fn proxy_conn(
+    mut socket: TcpStream,
+    proxy: Proxy,
+    wasi_runtime: WasiRuntime,
+    context: HttpContext,
+) -> Result<()> {
     match proxy.protocol {
         Protocol::Tcp => {
             let mut upstream = TcpStream::connect(&proxy.upstream_address()).await?;
             tunnel(&mut socket, &mut upstream, proxy, wasi_runtime).await
         }
-        Protocol::Http => http_proxy(socket, &proxy.wasi_module_path, wasi_runtime).await,
+        Protocol::Http => {
+            let scheme = if proxy.tls {
+                String::from("https")
+            } else {
+                String::from("http")
+            };
+            let host = proxy.upstream_address();
+            http_proxy(
+                socket,
+                &proxy.request_wasi_module_path,
+                &proxy.response_wasi_module_path,
+                scheme,
+                host,
+                wasi_runtime,
+                context,
+            )
+            .await
+        }
     }
 }
 
-async fn listen(listener: TcpListener, proxy: Proxy, wasi_runtime: WasiRuntime) {
+async fn listen(
+    listener: TcpListener,
+    proxy: Proxy,
+    wasi_runtime: WasiRuntime,
+    context: HttpContext,
+) {
     loop {
         let (socket, _) = listener.accept().await.unwrap();
         let proxy = proxy.clone();
         let wasi_runtime = wasi_runtime.clone();
+        let context = context.clone();
         tokio::spawn(async move {
-            if let Err(err) = proxy_conn(socket, proxy, wasi_runtime).await {
+            if let Err(err) = proxy_conn(socket, proxy, wasi_runtime, context).await {
                 tracing::error!(?err, "Error proxying the connection");
             }
         });

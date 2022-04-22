@@ -1,22 +1,28 @@
 [[proxy]]
-wasi_module_path = "/tmp/wasi1.wasm"
+request_wasi_module_path = "/tmp/wasi1.wasm"
+response_wasi_module_path = "/tmp/wasi1.wasm"
 port = 92
 upstream_address = "127.0.0.1"
 upstream_port = 5432
 protocol = "tcp"
+tls = false
 
 [[proxy]]
-wasi_module_path = "/tmp/wasi2.wasm"
+request_wasi_module_path = "/tmp/wasi2.wasm"
+response_wasi_module_path = "/tmp/wasi1.wasm"
 port = 93
 address = "proxysaur.us"
 upstream_address = "127.0.0.1"
 upstream_port = 8000
 protocol = "http"
+tls = false
 
 [[proxy]]
-wasi_module_path = "/tmp/wasi3.wasm"
+request_wasi_module_path = "/tmp/wasi3.wasm"
+response_wasi_module_path = "/tmp/wasi1.wasm"
 port = 94
 address = "0.0.0.0"
 upstream_address = "127.0.0.1"
 upstream_port = 8001
 protocol = "http"
+tls = false

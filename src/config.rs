@@ -25,9 +25,11 @@ pub enum Protocol {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Proxy {
-    pub wasi_module_path: PathBuf,
+    pub request_wasi_module_path: PathBuf,
+    pub response_wasi_module_path: PathBuf,
     pub port: u16,
     pub protocol: Protocol,
+    pub tls: bool,
     #[serde(default = "default_address")]
     address: String,
     upstream_address: String,
