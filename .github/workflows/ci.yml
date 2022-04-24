@@ -64,7 +64,10 @@ jobs:
         with:
             toolchain: ${{ env.rust_version }}
             override: true
+            lfs: true
+      - name: Checkout LFS
+        run: git lfs pull
       - name: Install Rust
         run: rustup update ${{ env.rust_version }}
       - name: unit test
-        run: cargo test
+        run: cargo test --workspace

@@ -16,10 +16,20 @@ fn default_address() -> String {
     "127.0.0.1".into()
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Protocol {
+    Tcp,
+    Http,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Proxy {
-    pub wasi_module_path: PathBuf,
+    pub request_wasi_module_path: PathBuf,
+    pub response_wasi_module_path: PathBuf,
     pub port: u16,
+    pub protocol: Protocol,
+    pub tls: bool,
     #[serde(default = "default_address")]
     address: String,
     upstream_address: String,
@@ -67,10 +77,12 @@ mod test {
     use std::{fs::File, io::Write, path::PathBuf};
     use tempdir::TempDir;
 
+    use crate::config::Protocol;
+
     use super::{Args, Config};
 
-    fn test_data() -> (TempDir, PathBuf) {
-        let data = include_bytes!("test_data/config.toml");
+    fn tests() -> (TempDir, PathBuf) {
+        let data = include_bytes!("tests/config.toml");
 
         let tmp_dir = TempDir::new("proxysaur").expect("should create the temp dir");
         let file_path = tmp_dir.path().join("proxysaur.toml");
@@ -82,13 +94,14 @@ mod test {
 
     #[test]
     fn parse_config_arg() {
-        let (_tmp_dir, file_path) = test_data();
+        let (_tmp_dir, file_path) = tests();
         let args = Args {
             config_path: Some(file_path),
         };
         let config = Config::try_from(args).expect("should build the config object");
         assert_eq!(config.proxy.len(), 3);
         assert_eq!(&config.proxy[0].address(), "127.0.0.1:92");
+        assert_eq!(&config.proxy[0].protocol, &Protocol::Tcp);
         assert_eq!(&config.proxy[1].address(), "proxysaur.us:93");
         assert_eq!(&config.proxy[2].address(), "0.0.0.0:94");
         assert_eq!(&config.proxy[0].upstream_address(), "127.0.0.1:5432");
@@ -98,10 +111,13 @@ mod test {
 
     #[test]
     fn parse_config_arg_no_path() {
-        let (tmp_dir, _file_path) = test_data();
+        let (tmp_dir, _file_path) = tests();
         let args = Args { config_path: None };
+        let current_dir = std::env::current_dir().expect("should get the current directory");
         std::env::set_current_dir(tmp_dir.path()).expect("should set the current directory");
-        let config = Config::try_from(args).expect("should build the config object");
+        let config = Config::try_from(args);
+        std::env::set_current_dir(current_dir).expect("should set directory back");
+        let config = config.expect("should parse the config");
         assert_eq!(config.proxy.len(), 3);
     }
 }
