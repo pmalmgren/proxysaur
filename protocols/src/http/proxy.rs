@@ -6,11 +6,18 @@ use http::{Request, Response, StatusCode, Uri, Version};
 use hyper::{client::HttpConnector, server::conn::Http, service::service_fn, Body};
 use hyper_alpn::AlpnConnector;
 use hyper_tls::HttpsConnector;
+use tokio::io::{AsyncRead, AsyncWrite};
 use wasi_runtime::{Linker, Store, WasiCtx, WasiCtxBuilder, WasiRuntime};
 
-use crate::http::{request_add_to_linker, response_add_to_linker, ProxyHttpRequest};
+use crate::{
+    http::{
+        pre_request_add_to_linker, request_add_to_linker, response_add_to_linker,
+        ProxyHttpPreRequest, ProxyHttpRequest,
+    },
+    tcp::tunnel,
+};
 
-use super::ProxyHttpResponse;
+use super::{hostname::Hostname, ProxyHttpResponse, ProxyMode};
 
 // Each protocol defines a context, and is passed in via process request
 #[derive(Clone)]
@@ -47,9 +54,67 @@ struct RequestContext {
     proxy_request: ProxyHttpRequest,
 }
 
+struct PreRequestContext {
+    wasi: WasiCtx,
+    proxy_request: ProxyHttpPreRequest,
+}
+
 struct ResponseContext {
     wasi: WasiCtx,
     proxy_response: ProxyHttpResponse,
+}
+
+async fn process_pre_request(
+    wasi_runtime: &mut WasiRuntime,
+    hostname: Hostname,
+    wasi_module_path: Option<PathBuf>,
+) -> Result<ProxyMode> {
+    let wasi_module_path = match wasi_module_path {
+        Some(wasi_module_path) => wasi_module_path,
+        None => {
+            return Ok(ProxyMode::Pass);
+        }
+    };
+
+    tracing::trace!("Building request.");
+    let proxy_request = ProxyHttpPreRequest::new(hostname);
+    tracing::trace!(?proxy_request, "Built request.");
+    let module = wasi_runtime
+        .fetch_module(wasi_module_path.as_path())
+        .await?;
+
+    let mut linker: Linker<PreRequestContext> = Linker::new(&wasi_runtime.engine);
+    let wasi = WasiCtxBuilder::new()
+        .inherit_stdio()
+        .inherit_args()?
+        .build();
+    tracing::trace!("Built WASI context.");
+    let ctx = PreRequestContext {
+        wasi,
+        proxy_request,
+    };
+
+    let mut store: Store<PreRequestContext> = Store::new(&wasi_runtime.engine, ctx);
+    wasi_runtime::add_to_linker(&mut linker, |s| &mut s.wasi)?;
+    tracing::trace!("Linked module.");
+
+    pre_request_add_to_linker(&mut linker, |ctx| -> &mut ProxyHttpPreRequest {
+        &mut ctx.proxy_request
+    })?;
+    tracing::trace!("Linked module with WIT.");
+
+    linker.module(&mut store, "", &module)?;
+    tracing::trace!("Added module to linker.");
+    linker
+        .get_default(&mut store, "")?
+        .typed::<(), (), _>(&store)?
+        .call(&mut store, ())?;
+    tracing::trace!("Called WASI module.");
+
+    let data = store.into_data();
+    tracing::trace!("Fetched request context from store.");
+    let proxy_mode = data.proxy_request.mode;
+    Ok(proxy_mode)
 }
 
 async fn process_request(
@@ -253,14 +318,14 @@ async fn http_proxy_service(
             Ok(resp)
         }
         Err(err) => {
-            tracing::error!(?err, "Error processing respones from WASM.");
+            tracing::error!(?err, "Error processing response from WASM.");
             Ok(error_payload(err))
         }
     }
 }
 
-pub async fn http_proxy(
-    socket: tokio::net::TcpStream,
+pub async fn http_proxy<T: AsyncRead + AsyncWrite + std::marker::Unpin + 'static>(
+    socket: T,
     proxy: Proxy,
     wasi_runtime: WasiRuntime,
     context: HttpContext,
@@ -270,6 +335,66 @@ pub async fn http_proxy(
         let context = context.clone();
         let proxy = proxy.clone();
         async move { http_proxy_service(request, proxy, wasi_runtime, context).await }
+    });
+
+    if let Err(http_err) = Http::new().serve_connection(socket, service).await {
+        tracing::error!(%http_err, "Error while serving HTTP connection");
+    }
+
+    Ok(())
+}
+
+async fn http_forward_proxy_service(
+    req: Request<Body>,
+    proxy: Proxy,
+    mut wasi_runtime: WasiRuntime,
+    context: HttpContext,
+) -> Result<Response<Body>, Infallible> {
+    let hostname = match Hostname::try_from(&req) {
+        Ok(hostname) => hostname,
+        Err(err) => {
+            tracing::warn!(?err, "Error processing hostname from connect request.");
+            return Ok(Response::new(hyper::Body::empty()));
+        }
+    };
+    if req.method() == hyper::Method::CONNECT {
+        match hyper::upgrade::on(req).await {
+            Ok(upgraded) => {
+                tokio::spawn(async move {
+                    let path = proxy.pre_request_wasi_module_path.clone();
+                    match process_pre_request(&mut wasi_runtime, hostname.clone(), path)
+                        .await
+                        .unwrap_or(ProxyMode::Pass)
+                    {
+                        ProxyMode::Intercept => {
+                            let res = http_proxy(upgraded, proxy, wasi_runtime, context).await;
+                            tracing::info!(?res, "Finished intercepting.");
+                        }
+                        ProxyMode::Pass => {
+                            let res = tunnel(upgraded, &hostname.authority).await;
+                            tracing::info!(?res, "Finished tunneling.");
+                        }
+                    }
+                });
+            }
+            Err(err) => tracing::error!(%err, "Error upgrading request."),
+        };
+    };
+
+    Ok(Response::new(hyper::Body::empty()))
+}
+
+pub async fn http_forward(
+    socket: tokio::net::TcpStream,
+    proxy: Proxy,
+    wasi_runtime: WasiRuntime,
+    context: HttpContext,
+) -> Result<()> {
+    let service = service_fn(|request: Request<Body>| {
+        let wasi_runtime = wasi_runtime.clone();
+        let context = context.clone();
+        let proxy = proxy.clone();
+        async move { http_forward_proxy_service(request, proxy, wasi_runtime, context).await }
     });
 
     if let Err(http_err) = Http::new().serve_connection(socket, service).await {
