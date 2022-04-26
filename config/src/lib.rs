@@ -37,9 +37,9 @@ pub struct Proxy {
     pub protocol: Protocol,
     pub tls: bool,
     #[serde(default = "default_address")]
-    address: String,
-    upstream_address: String,
-    upstream_port: u16,
+    pub address: String,
+    pub upstream_address: String,
+    pub upstream_port: u16,
 }
 
 impl Proxy {

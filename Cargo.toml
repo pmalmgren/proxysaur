@@ -6,7 +6,8 @@ edition = "2021"
 [workspace]
 exclude = [
     "protocols/src/http/tests/http-request",
-    "protocols/src/http/tests/http-response"
+    "protocols/src/http/tests/http-response",
+    "protocols/src/http/tests/http-pre-request"
 ]
 
 [dependencies]

@@ -50,7 +50,7 @@ pub async fn tunnel<T: AsyncRead + AsyncWrite>(
                     tracing::debug!("Detected EOF from client.");
                     break;
                 }
-                match server_wh.write_all(&buf).await {
+                match server_wh.write_all(&buf[0..bytes_read]).await {
                     Ok(_) => {},
                     Err(error) => {
                         tracing::error!(%error, "Error writing bytes to server.");

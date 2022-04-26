@@ -344,12 +344,75 @@ pub async fn http_proxy<T: AsyncRead + AsyncWrite + std::marker::Unpin + 'static
     Ok(())
 }
 
-async fn http_forward_proxy_service(
+async fn proxy_https(
     req: Request<Body>,
+    hostname: Hostname,
+    proxy: Proxy,
+    mut wasi_runtime: WasiRuntime,
+    context: HttpContext,
+) -> Result<(), Infallible> {
+    tokio::spawn(async move {
+        match hyper::upgrade::on(req).await {
+            Ok(upgraded) => {
+                let path = proxy.pre_request_wasi_module_path.clone();
+                match process_pre_request(&mut wasi_runtime, hostname.clone(), path)
+                    .await
+                    .unwrap_or(ProxyMode::Pass)
+                {
+                    ProxyMode::Intercept => {
+                        let res = http_proxy(upgraded, proxy, wasi_runtime, context).await;
+                        tracing::info!(?res, "Finished intercepting.");
+                    }
+                    ProxyMode::Pass => {
+                        let res = tunnel(upgraded, &hostname.authority).await;
+                        tracing::info!(?res, "Finished tunneling.");
+                    }
+                }
+            }
+            Err(err) => tracing::error!(%err, "Error upgrading request."),
+        };
+    });
+    Ok(())
+}
+
+async fn proxy_http(
+    req: Request<Body>,
+    hostname: Hostname,
     proxy: Proxy,
     mut wasi_runtime: WasiRuntime,
     context: HttpContext,
 ) -> Result<Response<Body>, Infallible> {
+    let path = proxy.pre_request_wasi_module_path.clone();
+    let mut proxy = proxy.clone();
+    proxy.upstream_address = hostname.host.clone();
+    proxy.upstream_port = hostname.port;
+    proxy.tls = false;
+    match process_pre_request(&mut wasi_runtime, hostname.clone(), path)
+        .await
+        .unwrap_or(ProxyMode::Pass)
+    {
+        ProxyMode::Intercept => {
+            let res = http_proxy_service(req, proxy, wasi_runtime, context).await;
+            tracing::info!(?res, "Finished intercepting.");
+            res
+        }
+        ProxyMode::Pass => {
+            proxy.request_wasi_module_path = None;
+            proxy.response_wasi_module_path = None;
+            let res = http_proxy_service(req, proxy, wasi_runtime, context).await;
+            tracing::info!(?res, "Finished tunneling.");
+            res
+        }
+    }
+}
+
+async fn http_forward_proxy_service(
+    req: Request<Body>,
+    proxy: Proxy,
+    wasi_runtime: WasiRuntime,
+    context: HttpContext,
+) -> Result<Response<Body>, Infallible> {
+    tracing::info!(?req, "Received request");
     let hostname = match Hostname::try_from(&req) {
         Ok(hostname) => hostname,
         Err(err) => {
@@ -357,31 +420,16 @@ async fn http_forward_proxy_service(
             return Ok(Response::new(hyper::Body::empty()));
         }
     };
-    if req.method() == hyper::Method::CONNECT {
-        match hyper::upgrade::on(req).await {
-            Ok(upgraded) => {
-                tokio::spawn(async move {
-                    let path = proxy.pre_request_wasi_module_path.clone();
-                    match process_pre_request(&mut wasi_runtime, hostname.clone(), path)
-                        .await
-                        .unwrap_or(ProxyMode::Pass)
-                    {
-                        ProxyMode::Intercept => {
-                            let res = http_proxy(upgraded, proxy, wasi_runtime, context).await;
-                            tracing::info!(?res, "Finished intercepting.");
-                        }
-                        ProxyMode::Pass => {
-                            let res = tunnel(upgraded, &hostname.authority).await;
-                            tracing::info!(?res, "Finished tunneling.");
-                        }
-                    }
-                });
-            }
-            Err(err) => tracing::error!(%err, "Error upgrading request."),
-        };
-    };
 
-    Ok(Response::new(hyper::Body::empty()))
+    if req.method() == hyper::Method::CONNECT {
+        let res = proxy_https(req, hostname, proxy, wasi_runtime, context).await;
+        tracing::info!(?res, "HTTPS proxy result.");
+        Ok(Response::new(hyper::Body::empty()))
+    } else {
+        let res = proxy_http(req, hostname, proxy, wasi_runtime, context).await;
+        tracing::info!(?res, "HTTP proxy result.");
+        res
+    }
 }
 
 pub async fn http_forward(
@@ -397,7 +445,11 @@ pub async fn http_forward(
         async move { http_forward_proxy_service(request, proxy, wasi_runtime, context).await }
     });
 
-    if let Err(http_err) = Http::new().serve_connection(socket, service).await {
+    if let Err(http_err) = Http::new()
+        .serve_connection(socket, service)
+        .with_upgrades()
+        .await
+    {
         tracing::error!(%http_err, "Error while serving HTTP connection");
     }
 
