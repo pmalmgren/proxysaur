@@ -1,16 +1,25 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
 /// A network debugging proxy powered by WebAssembly
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
+#[clap(propagate_version = true)]
 pub struct Args {
     /// Location of the configuration file
     #[clap(short, long)]
     pub config_path: Option<PathBuf>,
+    #[clap(subcommand)]
+    pub commands: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+pub enum Commands {
+    /// Generates a CA
+    GenerateCa { path: PathBuf },
 }
 
 fn default_address() -> String {
@@ -63,10 +72,15 @@ pub struct Config {
     pub proxy: Vec<Proxy>,
 }
 
-impl Config {
-    pub fn try_parse() -> Result<Config> {
-        let args = Args::parse();
-        Config::try_from(args)
+impl Args {
+    pub fn new() -> Self {
+        Args::parse()
+    }
+}
+
+impl Default for Args {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -108,6 +122,7 @@ mod test {
         let (_tmp_dir, file_path) = tests();
         let args = Args {
             config_path: Some(file_path),
+            commands: None,
         };
         let config = Config::try_from(args).expect("should build the config object");
         assert_eq!(config.proxy.len(), 3);
@@ -123,7 +138,10 @@ mod test {
     #[test]
     fn parse_config_arg_no_path() {
         let (tmp_dir, _file_path) = tests();
-        let args = Args { config_path: None };
+        let args = Args {
+            config_path: None,
+            commands: None,
+        };
         let current_dir = std::env::current_dir().expect("should get the current directory");
         std::env::set_current_dir(tmp_dir.path()).expect("should set the current directory");
         let config = Config::try_from(args);
