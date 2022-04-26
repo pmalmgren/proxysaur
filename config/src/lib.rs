@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use anyhow::Result;
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
@@ -26,8 +27,12 @@ pub enum Protocol {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Proxy {
-    pub request_wasi_module_path: PathBuf,
-    pub response_wasi_module_path: PathBuf,
+    #[serde(default)]
+    pub pre_request_wasi_module_path: Option<PathBuf>,
+    #[serde(default)]
+    pub request_wasi_module_path: Option<PathBuf>,
+    #[serde(default)]
+    pub response_wasi_module_path: Option<PathBuf>,
     pub port: u16,
     pub protocol: Protocol,
     pub tls: bool,
@@ -58,6 +63,13 @@ pub struct Config {
     pub proxy: Vec<Proxy>,
 }
 
+impl Config {
+    pub fn try_parse() -> Result<Config> {
+        let args = Args::parse();
+        Config::try_from(args)
+    }
+}
+
 impl TryFrom<Args> for Config {
     type Error = anyhow::Error;
 
@@ -78,7 +90,7 @@ mod test {
     use std::{fs::File, io::Write, path::PathBuf};
     use tempdir::TempDir;
 
-    use crate::config::{Args, Config, Protocol};
+    use super::{Args, Config, Protocol};
 
     fn tests() -> (TempDir, PathBuf) {
         let data = include_bytes!("tests/config.toml");

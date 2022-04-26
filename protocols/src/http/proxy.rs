@@ -1,6 +1,7 @@
-use std::{convert::Infallible, path::Path};
+use std::{convert::Infallible, path::PathBuf};
 
 use anyhow::Result;
+use config::Proxy;
 use http::{Request, Response, StatusCode, Uri, Version};
 use hyper::{client::HttpConnector, server::conn::Http, service::service_fn, Body};
 use hyper_alpn::AlpnConnector;
@@ -54,14 +55,23 @@ struct ResponseContext {
 async fn process_request(
     wasi_runtime: &mut WasiRuntime,
     req: Request<Body>,
-    wasi_module_path: &Path,
+    wasi_module_path: Option<PathBuf>,
     scheme: &str,
     host: &str,
 ) -> Result<Request<Body>> {
+    let wasi_module_path = match wasi_module_path {
+        Some(wasi_module_path) => wasi_module_path,
+        None => {
+            return Ok(req);
+        }
+    };
+
     tracing::trace!("Building request.");
     let proxy_request = ProxyHttpRequest::new(req, scheme, host).await?;
     tracing::trace!(?proxy_request, "Built request.");
-    let module = wasi_runtime.fetch_module(wasi_module_path).await?;
+    let module = wasi_runtime
+        .fetch_module(wasi_module_path.as_path())
+        .await?;
 
     let mut linker: Linker<RequestContext> = Linker::new(&wasi_runtime.engine);
     let wasi = WasiCtxBuilder::new()
@@ -101,10 +111,18 @@ async fn process_request(
 async fn process_response(
     wasi_runtime: &mut WasiRuntime,
     resp: Response<Body>,
-    wasi_module_path: &Path,
+    wasi_module_path: Option<PathBuf>,
 ) -> Result<Response<Body>> {
+    let wasi_module_path = match wasi_module_path {
+        Some(path) => path,
+        None => {
+            return Ok(resp);
+        }
+    };
     let proxy_response = ProxyHttpResponse::new(resp).await?;
-    let module = wasi_runtime.fetch_module(wasi_module_path).await?;
+    let module = wasi_runtime
+        .fetch_module(wasi_module_path.as_path())
+        .await?;
 
     let mut linker: Linker<ResponseContext> = Linker::new(&wasi_runtime.engine);
     let wasi = WasiCtxBuilder::new()
@@ -166,24 +184,36 @@ fn error_payload(error: anyhow::Error) -> Response<Body> {
 
 async fn http_proxy_service(
     req: Request<Body>,
-    req_wasi_module_path: &Path,
-    resp_wasi_module_path: &Path,
-    scheme: String,
-    host: String,
+    proxy: Proxy,
     mut wasi_runtime: WasiRuntime,
     context: HttpContext,
 ) -> Result<Response<Body>, Infallible> {
-    let request =
-        match process_request(&mut wasi_runtime, req, req_wasi_module_path, &scheme, &host).await {
-            Ok(request) => {
-                tracing::info!(new_request = ?request, "New request.");
-                request
-            }
-            Err(err) => {
-                tracing::error!(?err, "Error getting request from WASM.");
-                return Ok(error_payload(err));
-            }
-        };
+    let scheme: String = if proxy.tls {
+        "https".into()
+    } else {
+        "http".into()
+    };
+    let host = proxy.upstream_address();
+    let req_path = proxy.request_wasi_module_path.clone();
+    let resp_path = proxy.response_wasi_module_path.clone();
+    let request = match process_request(
+        &mut wasi_runtime,
+        req,
+        req_path,
+        scheme.as_str(),
+        host.as_str(),
+    )
+    .await
+    {
+        Ok(request) => {
+            tracing::info!(new_request = ?request, "New request.");
+            request
+        }
+        Err(err) => {
+            tracing::error!(?err, "Error getting request from WASM.");
+            return Ok(error_payload(err));
+        }
+    };
     let version = match negotiate_version(scheme, host, &context).await {
         Ok(version) => version,
         Err(err) => {
@@ -217,7 +247,7 @@ async fn http_proxy_service(
         }
     };
 
-    match process_response(&mut wasi_runtime, resp, resp_wasi_module_path).await {
+    match process_response(&mut wasi_runtime, resp, resp_path).await {
         Ok(resp) => {
             tracing::info!(new_response = ?resp, "New response.");
             Ok(resp)
@@ -231,32 +261,15 @@ async fn http_proxy_service(
 
 pub async fn http_proxy(
     socket: tokio::net::TcpStream,
-    request_wasi_module_path: &Path,
-    response_wasi_module_path: &Path,
-    scheme: String,
-    host: String,
+    proxy: Proxy,
     wasi_runtime: WasiRuntime,
     context: HttpContext,
 ) -> Result<()> {
     let service = service_fn(|request: Request<Body>| {
-        let req_path = request_wasi_module_path.to_path_buf();
-        let resp_path = response_wasi_module_path.to_path_buf();
         let wasi_runtime = wasi_runtime.clone();
         let context = context.clone();
-        let scheme = scheme.clone();
-        let host = host.clone();
-        async move {
-            http_proxy_service(
-                request,
-                &req_path,
-                &resp_path,
-                scheme,
-                host,
-                wasi_runtime,
-                context,
-            )
-            .await
-        }
+        let proxy = proxy.clone();
+        async move { http_proxy_service(request, proxy, wasi_runtime, context).await }
     });
 
     if let Err(http_err) = Http::new().serve_connection(socket, service).await {
@@ -284,10 +297,15 @@ mod test {
         let mut wasi_path = std::env::current_dir().expect("should get the current directory");
         wasi_path.push("src/http/tests/http-request/target/wasm32-wasi/debug/http-request.wasm");
         let mut wasi_runtime = WasiRuntime::new().expect("should build the runtime");
-        let new_request =
-            process_request(&mut wasi_runtime, request, &wasi_path, "http", "localhost")
-                .await
-                .expect("should process the request");
+        let new_request = process_request(
+            &mut wasi_runtime,
+            request,
+            Some(wasi_path),
+            "http",
+            "localhost",
+        )
+        .await
+        .expect("should process the request");
 
         let (parts, body) = new_request.into_parts();
         assert_eq!(parts.method, "post");
@@ -308,7 +326,7 @@ mod test {
         let mut wasi_path = std::env::current_dir().expect("should get the current directory");
         wasi_path.push("src/http/tests/http-response/target/wasm32-wasi/debug/http-response.wasm");
         let mut wasi_runtime = WasiRuntime::new().expect("should build the runtime");
-        let new_response = process_response(&mut wasi_runtime, response, &wasi_path)
+        let new_response = process_response(&mut wasi_runtime, response, Some(wasi_path))
             .await
             .expect("should process the response");
 

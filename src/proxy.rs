@@ -7,7 +7,7 @@ use tokio::{
 };
 use wasi_runtime::WasiRuntime;
 
-use crate::config::{Config, Protocol, Proxy};
+use config::{Config, Protocol, Proxy};
 
 pub async fn run(config: Config) -> Result<()> {
     let futures = config
@@ -108,24 +108,7 @@ async fn proxy_conn(
         Protocol::HttpForward => {
             todo!()
         }
-        Protocol::Http => {
-            let scheme = if proxy.tls {
-                String::from("https")
-            } else {
-                String::from("http")
-            };
-            let host = proxy.upstream_address();
-            http_proxy(
-                socket,
-                &proxy.request_wasi_module_path,
-                &proxy.response_wasi_module_path,
-                scheme,
-                host,
-                wasi_runtime,
-                context,
-            )
-            .await
-        }
+        Protocol::Http => http_proxy(socket, proxy, wasi_runtime, context).await,
     }
 }
 
