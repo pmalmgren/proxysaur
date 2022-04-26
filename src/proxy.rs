@@ -105,6 +105,9 @@ async fn proxy_conn(
             let mut upstream = TcpStream::connect(&proxy.upstream_address()).await?;
             tunnel(&mut socket, &mut upstream, proxy, wasi_runtime).await
         }
+        Protocol::HttpForward => {
+            todo!()
+        }
         Protocol::Http => {
             let scheme = if proxy.tls {
                 String::from("https")

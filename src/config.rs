@@ -21,6 +21,7 @@ fn default_address() -> String {
 pub enum Protocol {
     Tcp,
     Http,
+    HttpForward,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -77,9 +78,7 @@ mod test {
     use std::{fs::File, io::Write, path::PathBuf};
     use tempdir::TempDir;
 
-    use crate::config::Protocol;
-
-    use super::{Args, Config};
+    use crate::config::{Args, Config, Protocol};
 
     fn tests() -> (TempDir, PathBuf) {
         let data = include_bytes!("tests/config.toml");
