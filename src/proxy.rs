@@ -1,13 +1,11 @@
 use anyhow::Result;
 use futures::future::{join_all, try_join_all};
-use protocols::http::proxy::{http_proxy, HttpContext};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
-};
+use protocols::http::proxy::{http_forward, http_proxy, HttpContext};
+use protocols::tcp::tunnel;
+use tokio::net::{TcpListener, TcpStream};
 use wasi_runtime::WasiRuntime;
 
-use crate::config::{Config, Protocol, Proxy};
+use config::{Config, Protocol, Proxy};
 
 pub async fn run(config: Config) -> Result<()> {
     let futures = config
@@ -33,67 +31,6 @@ pub async fn run(config: Config) -> Result<()> {
     Ok(())
 }
 
-async fn tunnel(
-    socket: &mut TcpStream,
-    upstream: &mut TcpStream,
-    _proxy: Proxy,
-    mut _wasi_runtime: WasiRuntime,
-) -> Result<()> {
-    let (mut server_rh, mut server_wh) = upstream.split();
-    let (mut client_rh, mut client_wh) = tokio::io::split(socket);
-
-    tokio::join! {
-        async {
-            loop {
-                let mut buf: Vec<u8> = vec![0; 2056];
-                let bytes_read = match server_rh.read(&mut buf).await {
-                    Ok(n_bytes) => n_bytes,
-                    Err(error) => {
-                        tracing::error!(%error, "Error reading bytes from server");
-                        break;
-                    },
-                };
-                if bytes_read == 0 {
-                    tracing::debug!("Detected EOF from server.");
-                    break;
-                }
-                match client_wh.write_all(&buf[0..bytes_read]).await {
-                    Ok(_) => {},
-                    Err(error) => {
-                        tracing::error!(%error, "Error writing bytes to client.");
-                        break;
-                    }
-                };
-            }
-        },
-        async {
-            loop {
-                let mut buf: Vec<u8> = vec![0; 2056];
-                let bytes_read = match client_rh.read(&mut buf).await {
-                    Ok(n_bytes) => n_bytes,
-                    Err(error) => {
-                        tracing::error!(%error, "Error reading bytes from client.");
-                        break;
-                    },
-                };
-                if bytes_read == 0 {
-                    tracing::debug!("Detected EOF from client.");
-                    break;
-                }
-                match server_wh.write_all(&buf).await {
-                    Ok(_) => {},
-                    Err(error) => {
-                        tracing::error!(%error, "Error writing bytes to server.");
-                        break;
-                    }
-                };
-            }
-        }
-    };
-
-    Ok(())
-}
-
 async fn proxy_conn(
     mut socket: TcpStream,
     proxy: Proxy,
@@ -101,28 +38,9 @@ async fn proxy_conn(
     context: HttpContext,
 ) -> Result<()> {
     match proxy.protocol {
-        Protocol::Tcp => {
-            let mut upstream = TcpStream::connect(&proxy.upstream_address()).await?;
-            tunnel(&mut socket, &mut upstream, proxy, wasi_runtime).await
-        }
-        Protocol::Http => {
-            let scheme = if proxy.tls {
-                String::from("https")
-            } else {
-                String::from("http")
-            };
-            let host = proxy.upstream_address();
-            http_proxy(
-                socket,
-                &proxy.request_wasi_module_path,
-                &proxy.response_wasi_module_path,
-                scheme,
-                host,
-                wasi_runtime,
-                context,
-            )
-            .await
-        }
+        Protocol::Tcp => tunnel(&mut socket, &proxy.upstream_address()).await,
+        Protocol::HttpForward => http_forward(socket, proxy, wasi_runtime, context).await,
+        Protocol::Http => http_proxy(socket, proxy, wasi_runtime, context).await,
     }
 }
 

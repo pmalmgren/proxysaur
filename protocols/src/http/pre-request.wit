@@ -1,0 +1,4 @@
+use * from types
+
+http-request-get: function() -> http-pre-request
+http-set-proxy-mode: function(mode: proxy-mode)

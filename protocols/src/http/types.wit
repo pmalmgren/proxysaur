@@ -19,3 +19,15 @@ record http-request {
     method: http-method,
     body: body
 }
+
+record http-pre-request {
+    path: string,
+    authority: string,
+    host: string,
+    scheme: string
+}
+
+enum proxy-mode {
+    intercept,
+    pass,
+}

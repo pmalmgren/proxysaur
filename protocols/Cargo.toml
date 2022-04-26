@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.56"
 wasi-runtime = { path = "../wasi-runtime" }
+config = { path = "../config" }
 http = "0.2"
 hyper = { version = "0.14", features = ["full"] }
 hyper-alpn = "0.3.0"

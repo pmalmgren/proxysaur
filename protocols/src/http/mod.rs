@@ -2,10 +2,16 @@ use http::{Request, Response, Uri, Version};
 use hyper::Body;
 use thiserror::Error;
 
+pub use self::pre_request::pre_request::{
+    add_to_linker as pre_request_add_to_linker, HttpPreRequest, PreRequest, ProxyMode,
+};
 pub use self::request::add_to_linker as request_add_to_linker;
 pub use self::response::add_to_linker as response_add_to_linker;
 use self::{request::HttpRequest, response::HttpResponse};
+use hostname::Hostname;
 
+mod hostname;
+mod pre_request;
 mod request;
 mod response;
 
@@ -121,6 +127,37 @@ impl response::Response for ProxyHttpResponse {
             self.response.headers.remove(idx);
         }
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct ProxyHttpPreRequest {
+    request: HttpPreRequest,
+    mode: ProxyMode,
+}
+
+impl PreRequest for ProxyHttpPreRequest {
+    fn http_request_get(&mut self) -> HttpPreRequest {
+        self.request.clone()
+    }
+
+    fn http_set_proxy_mode(&mut self, mode: ProxyMode) {
+        self.mode = mode;
+    }
+}
+
+impl ProxyHttpPreRequest {
+    pub fn new(hostname: Hostname) -> Self {
+        let request = HttpPreRequest {
+            path: "/".into(),
+            authority: hostname.authority,
+            host: hostname.host,
+            scheme: hostname.scheme,
+        };
+        Self {
+            request,
+            mode: ProxyMode::Pass,
+        }
     }
 }
 
