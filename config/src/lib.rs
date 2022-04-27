@@ -1,8 +1,13 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
+
+#[macro_use]
+extern crate derive_builder;
+
+pub mod cli;
 
 /// A network debugging proxy powered by WebAssembly
 #[derive(Parser)]
@@ -20,6 +25,10 @@ pub struct Args {
 pub enum Commands {
     /// Generates a CA
     GenerateCa { path: Option<PathBuf> },
+    /// Initializes proxysaur
+    Init { path: Option<PathBuf> },
+    /// Adds a proxy to the configuration
+    AddProxy { path: Option<PathBuf> },
 }
 
 fn default_address() -> String {
@@ -34,7 +43,20 @@ pub enum Protocol {
     HttpForward,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl FromStr for Protocol {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "tcp" => Ok(Protocol::Tcp),
+            "http" => Ok(Protocol::Http),
+            "httpforward" => Ok(Protocol::HttpForward),
+            _ => Err(anyhow::Error::msg("Invalid protocol.")),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Builder)]
 pub struct Proxy {
     #[serde(default)]
     pub pre_request_wasi_module_path: Option<PathBuf>,
@@ -67,8 +89,13 @@ impl Proxy {
     }
 }
 
+fn default_proxy() -> Vec<Proxy> {
+    vec![]
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
+    #[serde(default = "default_proxy")]
     pub proxy: Vec<Proxy>,
     pub ca_path: Option<PathBuf>,
 }

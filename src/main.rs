@@ -15,6 +15,14 @@ async fn main() -> Result<()> {
             let _res = ca::cli::generate_ca(path).await?;
             return Ok(());
         }
+        Some(config::Commands::Init { path }) => {
+            let _res = config::cli::init(path)?;
+            return Ok(());
+        }
+        Some(config::Commands::AddProxy { path }) => {
+            let _res = config::cli::add_proxy(path)?;
+            return Ok(());
+        }
         None => {}
     };
 
