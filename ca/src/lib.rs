@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::{io::BufReader, os::unix::prelude::PermissionsExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::RwLock;
+use tokio::try_join;
 use tokio_rustls::rustls::{
     Certificate, PrivateKey, ServerConfig, ALL_CIPHER_SUITES, ALL_KX_GROUPS, ALL_VERSIONS,
 };
@@ -89,11 +90,37 @@ pub struct CertificateAuthority {
     config_cache: Arc<RwLock<HashMap<String, ServerConfig>>>,
 }
 
+pub async fn valid_ca_directory(ca_path: &Path) -> bool {
+    let ca_key_path = ca_path.join("myca.key");
+    let ca_cert_path = ca_path.join("myca.pem");
+    match try_join!(
+        tokio::fs::metadata(ca_cert_path),
+        tokio::fs::metadata(ca_key_path),
+    ) {
+        Ok((key_metadata, cert_metadata)) => {
+            if !key_metadata.is_file() {
+                return false;
+            }
+            if !cert_metadata.is_file() {
+                return false;
+            }
+
+            true
+        }
+        Err(_err) => false,
+    }
+}
+
 impl CertificateAuthority {
     /// Loads the `generatecert.sh` script which dynamically generates certificate requests.
     pub async fn load(ca_path: PathBuf) -> Result<Self> {
         let script = include_str!("scripts/generatecert.sh");
         let project_dirs = project_dirs().await?;
+
+        if !valid_ca_directory(&ca_path).await {
+            let msg = format!("{:?} is not a valid CA directory", ca_path);
+            return Err(anyhow::Error::msg(msg));
+        }
 
         {
             let script_dir_str = project_dirs

@@ -2,9 +2,9 @@ use anyhow::Result;
 use std::{os::unix::fs::PermissionsExt, path::PathBuf};
 use tokio::io::AsyncWriteExt;
 
-use crate::{project_dirs, CaError};
+use crate::{project_dirs, valid_ca_directory, CaError};
 
-pub async fn generate_ca(path: Option<PathBuf>) -> Result<PathBuf> {
+pub async fn generate_ca(path: Option<PathBuf>, force_overwrite: bool) -> Result<PathBuf> {
     let ca_dir = match path {
         Some(ca_dir) => ca_dir,
         None => {
@@ -13,6 +13,12 @@ pub async fn generate_ca(path: Option<PathBuf>) -> Result<PathBuf> {
             project_dirs.data_dir().to_path_buf()
         }
     };
+
+    if valid_ca_directory(&ca_dir).await && !force_overwrite {
+        eprintln!("Refusing to overrwrite existing CA dir: {:?}", ca_dir);
+        return Ok(ca_dir);
+    }
+
     let ca_dir_str = ca_dir
         .to_str()
         .ok_or_else(|| CaError::CustomError("Error building certs".into()))?;

@@ -24,7 +24,11 @@ pub struct Args {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Generates a CA
-    GenerateCa { path: Option<PathBuf> },
+    GenerateCa {
+        path: Option<PathBuf>,
+        #[clap(short)]
+        force: bool,
+    },
     /// Initializes proxysaur
     Init { path: Option<PathBuf> },
     /// Adds a proxy to the configuration
