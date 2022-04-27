@@ -8,6 +8,11 @@ use wasi_runtime::WasiRuntime;
 use config::{Config, Protocol, Proxy};
 
 pub async fn run(config: Config) -> Result<()> {
+    let ca_path = match config.ca_path {
+        Some(ca_path) => ca_path,
+        // the default CA dir uses XDG directories
+        None => ca::default_ca_dir()?,
+    };
     let futures = config
         .proxy
         .into_iter()
@@ -15,7 +20,7 @@ pub async fn run(config: Config) -> Result<()> {
 
     let listeners = try_join_all(futures).await?;
 
-    let http_context = HttpContext::new(config.ca_path).await?;
+    let http_context = HttpContext::new(ca_path).await?;
     let wasi_runtime = WasiRuntime::new()?;
 
     let _handle = join_all(

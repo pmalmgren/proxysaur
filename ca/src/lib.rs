@@ -74,6 +74,12 @@ pub(crate) async fn project_dirs() -> Result<ProjectDirs> {
     Ok(project_dirs)
 }
 
+pub fn default_ca_dir() -> Result<PathBuf> {
+    ProjectDirs::from("com", "proxysaur", "proxysaur")
+        .ok_or_else(|| anyhow::Error::msg("Could not get project dirs"))
+        .map(|project_dir| project_dir.data_dir().to_path_buf())
+}
+
 /// Holds a path to the script used to generate and sign certificates.
 #[derive(Clone)]
 pub struct CertificateAuthority {
