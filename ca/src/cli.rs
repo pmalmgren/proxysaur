@@ -8,7 +8,7 @@ pub async fn generate_ca(ca_dir: PathBuf) -> Result<(), CaError> {
     let ca_dir_str = ca_dir
         .to_str()
         .ok_or_else(|| CaError::CustomError("Error building certs".into()))?;
-    let config = include_str!("scripts/config");
+    let config = include_str!("scripts/config.conf");
     let script = include_str!("scripts/generateca.sh");
 
     {

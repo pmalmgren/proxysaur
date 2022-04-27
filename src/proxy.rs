@@ -15,7 +15,7 @@ pub async fn run(config: Config) -> Result<()> {
 
     let listeners = try_join_all(futures).await?;
 
-    let http_context = HttpContext::new();
+    let http_context = HttpContext::new(config.ca_path).await?;
     let wasi_runtime = WasiRuntime::new()?;
 
     let _handle = join_all(

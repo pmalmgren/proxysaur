@@ -1,6 +1,7 @@
 use std::{convert::Infallible, path::PathBuf};
 
 use anyhow::Result;
+use ca::CertificateAuthority;
 use config::Proxy;
 use http::{Request, Response, StatusCode, Uri, Version};
 use hyper::{client::HttpConnector, server::conn::Http, service::service_fn, Body};
@@ -24,10 +25,12 @@ use super::{hostname::Hostname, ProxyHttpResponse, ProxyMode};
 pub struct HttpContext {
     client_h1: hyper::Client<HttpsConnector<HttpConnector>, hyper::Body>,
     client_h2: hyper::Client<AlpnConnector, hyper::Body>,
+    #[allow(unused)]
+    ca: CertificateAuthority,
 }
 
 impl HttpContext {
-    pub fn new() -> HttpContext {
+    pub async fn new(ca_path: PathBuf) -> Result<HttpContext> {
         let alpn = AlpnConnector::new();
         let client_h2 = hyper::Client::builder()
             .http2_only(true)
@@ -35,17 +38,13 @@ impl HttpContext {
 
         let https = HttpsConnector::new();
         let client_h1 = hyper::Client::builder().build::<_, hyper::Body>(https);
+        let ca = CertificateAuthority::load(ca_path).await?;
 
-        Self {
+        Ok(Self {
             client_h1,
             client_h2,
-        }
-    }
-}
-
-impl Default for HttpContext {
-    fn default() -> Self {
-        Self::new()
+            ca,
+        })
     }
 }
 

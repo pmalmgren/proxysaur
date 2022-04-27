@@ -70,6 +70,7 @@ impl Proxy {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
     pub proxy: Vec<Proxy>,
+    pub ca_path: PathBuf,
 }
 
 impl Args {
