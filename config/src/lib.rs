@@ -19,7 +19,7 @@ pub struct Args {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Generates a CA
-    GenerateCa { path: PathBuf },
+    GenerateCa { path: Option<PathBuf> },
 }
 
 fn default_address() -> String {

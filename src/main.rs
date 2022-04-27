@@ -11,8 +11,8 @@ async fn main() -> Result<()> {
     let args = Args::new();
 
     match args.commands {
-        Some(config::Commands::GenerateCa { ref path }) => {
-            let _res = ca::cli::generate_ca(path.clone()).await?;
+        Some(config::Commands::GenerateCa { path }) => {
+            let _res = ca::cli::generate_ca(path).await?;
             return Ok(());
         }
         None => {}

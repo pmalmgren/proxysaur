@@ -1,3 +1,5 @@
+ca_path = "/home/user/.config/proxysaur/data"
+
 [[proxy]]
 request_wasi_module_path = "/tmp/wasi1.wasm"
 response_wasi_module_path = "/tmp/wasi1.wasm"

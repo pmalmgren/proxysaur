@@ -49,6 +49,31 @@ impl TryInto<ServerConfig> for CertAndKey {
     }
 }
 
+pub(crate) async fn project_dirs() -> Result<ProjectDirs> {
+    let project_dirs = ProjectDirs::from("com", "proxysaur", "proxysaur")
+        .ok_or_else(|| anyhow::Error::msg("Could not build project dirs"))?;
+
+    for dir in [
+        project_dirs.cache_dir(),
+        project_dirs.config_dir(),
+        project_dirs.data_dir(),
+    ] {
+        match tokio::fs::metadata(dir).await {
+            Ok(path) => {
+                if !path.is_dir() {
+                    let error = format!("{:?} exists and is not a directory.", dir);
+                    return Err(anyhow::Error::msg(error));
+                }
+            }
+            Err(_) => {
+                tokio::fs::create_dir(dir).await?;
+            }
+        }
+    }
+
+    Ok(project_dirs)
+}
+
 /// Holds a path to the script used to generate and sign certificates.
 #[derive(Clone)]
 pub struct CertificateAuthority {
@@ -62,8 +87,7 @@ impl CertificateAuthority {
     /// Loads the `generatecert.sh` script which dynamically generates certificate requests.
     pub async fn load(ca_path: PathBuf) -> Result<Self> {
         let script = include_str!("scripts/generatecert.sh");
-        let project_dirs = ProjectDirs::from("com", "proxysaur", "proxysaur")
-            .ok_or_else(|| anyhow::Error::msg("Could not build project dirs"))?;
+        let project_dirs = project_dirs().await?;
 
         {
             let script_dir_str = project_dirs

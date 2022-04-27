@@ -1324,6 +1324,7 @@ dependencies = [
  "hyper-tls",
  "thiserror",
  "tokio",
+ "tokio-rustls 0.23.3",
  "tracing",
  "wasi-runtime",
  "wit-bindgen-wasmtime",

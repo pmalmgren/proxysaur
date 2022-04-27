@@ -1,4 +1,4 @@
-use std::{convert::Infallible, path::PathBuf};
+use std::{convert::Infallible, path::PathBuf, sync::Arc};
 
 use anyhow::Result;
 use ca::CertificateAuthority;
@@ -8,6 +8,7 @@ use hyper::{client::HttpConnector, server::conn::Http, service::service_fn, Body
 use hyper_alpn::AlpnConnector;
 use hyper_tls::HttpsConnector;
 use tokio::io::{AsyncRead, AsyncWrite};
+use tokio_rustls::TlsAcceptor;
 use wasi_runtime::{Linker, Store, WasiCtx, WasiCtxBuilder, WasiRuntime};
 
 use crate::{
@@ -216,9 +217,9 @@ async fn process_response(
     Ok(new_response)
 }
 
-async fn negotiate_version(scheme: String, host: String, context: &HttpContext) -> Result<Version> {
+async fn negotiate_version(scheme: &str, host: &str, context: &HttpContext) -> Result<Version> {
     let uri = Uri::builder()
-        .scheme(scheme.as_str())
+        .scheme(scheme)
         .authority(host)
         .path_and_query("/")
         .build()?;
@@ -251,6 +252,7 @@ async fn http_proxy_service(
     proxy: Proxy,
     mut wasi_runtime: WasiRuntime,
     context: HttpContext,
+    version: Option<Version>,
 ) -> Result<Response<Body>, Infallible> {
     let scheme: String = if proxy.tls {
         "https".into()
@@ -278,12 +280,16 @@ async fn http_proxy_service(
             return Ok(error_payload(err));
         }
     };
-    let version = match negotiate_version(scheme, host, &context).await {
-        Ok(version) => version,
-        Err(err) => {
-            tracing::error!(?err, "Error negotiating HTTP version.");
-            return Ok(error_payload(err));
-        }
+
+    let version = match version {
+        Some(version) => version,
+        None => match negotiate_version(&scheme, &host, &context).await {
+            Ok(version) => version,
+            Err(err) => {
+                tracing::error!(?err, "Error negotiating HTTP version.");
+                return Ok(error_payload(err));
+            }
+        },
     };
 
     let resp = match version {
@@ -333,10 +339,45 @@ pub async fn http_proxy<T: AsyncRead + AsyncWrite + std::marker::Unpin + 'static
         let wasi_runtime = wasi_runtime.clone();
         let context = context.clone();
         let proxy = proxy.clone();
-        async move { http_proxy_service(request, proxy, wasi_runtime, context).await }
+        async move { http_proxy_service(request, proxy, wasi_runtime, context, None).await }
     });
 
     if let Err(http_err) = Http::new().serve_connection(socket, service).await {
+        tracing::error!(%http_err, "Error while serving HTTP connection");
+    }
+
+    Ok(())
+}
+
+pub async fn https_proxy<T: AsyncRead + AsyncWrite + std::marker::Unpin + 'static>(
+    socket: T,
+    proxy: Proxy,
+    wasi_runtime: WasiRuntime,
+    mut context: HttpContext,
+    hostname: Hostname,
+) -> Result<()> {
+    let version = negotiate_version(&hostname.scheme, &hostname.host, &context).await?;
+    let alpn_protocols: Vec<Vec<u8>> = match version {
+        Version::HTTP_2 => vec!["h2".into(), "http/1.1".into()],
+        _ => vec!["http/1.1".into()],
+    };
+    let mut config = context
+        .ca
+        .build_certs(&hostname.host, hostname.port)
+        .await?;
+    config.alpn_protocols = alpn_protocols;
+
+    let acceptor = TlsAcceptor::from(Arc::new(config));
+    let stream = acceptor.accept(socket).await?;
+
+    let service = service_fn(|request: Request<Body>| {
+        let wasi_runtime = wasi_runtime.clone();
+        let context = context.clone();
+        let proxy = proxy.clone();
+        async move { http_proxy_service(request, proxy, wasi_runtime, context, Some(version)).await }
+    });
+
+    if let Err(http_err) = Http::new().serve_connection(stream, service).await {
         tracing::error!(%http_err, "Error while serving HTTP connection");
     }
 
@@ -359,7 +400,8 @@ async fn proxy_https(
                     .unwrap_or(ProxyMode::Pass)
                 {
                     ProxyMode::Intercept => {
-                        let res = http_proxy(upgraded, proxy, wasi_runtime, context).await;
+                        let res =
+                            https_proxy(upgraded, proxy, wasi_runtime, context, hostname).await;
                         tracing::info!(?res, "Finished intercepting.");
                     }
                     ProxyMode::Pass => {
@@ -391,14 +433,14 @@ async fn proxy_http(
         .unwrap_or(ProxyMode::Pass)
     {
         ProxyMode::Intercept => {
-            let res = http_proxy_service(req, proxy, wasi_runtime, context).await;
+            let res = http_proxy_service(req, proxy, wasi_runtime, context, None).await;
             tracing::info!(?res, "Finished intercepting.");
             res
         }
         ProxyMode::Pass => {
             proxy.request_wasi_module_path = None;
             proxy.response_wasi_module_path = None;
-            let res = http_proxy_service(req, proxy, wasi_runtime, context).await;
+            let res = http_proxy_service(req, proxy, wasi_runtime, context, None).await;
             tracing::info!(?res, "Finished tunneling.");
             res
         }
