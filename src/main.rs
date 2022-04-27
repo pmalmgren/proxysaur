@@ -18,8 +18,10 @@ async fn main() -> Result<()> {
                 None => {
                     let path = format!("{:?}", res);
                     let path = path
-                        .strip_prefix('"').unwrap_or("")
-                        .strip_suffix('"').unwrap_or("")
+                        .strip_prefix('"')
+                        .unwrap_or("")
+                        .strip_suffix('"')
+                        .unwrap_or("")
                         .to_string();
                     path
                 }
