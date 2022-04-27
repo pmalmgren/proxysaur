@@ -35,7 +35,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "http-pre-prequest"
+name = "http-pre-request"
 version = "0.1.0"
 dependencies = [
  "wit-bindgen-rust",

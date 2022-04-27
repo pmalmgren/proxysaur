@@ -1,16 +1,38 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
+#[macro_use]
+extern crate derive_builder;
+
+pub mod cli;
+
 /// A network debugging proxy powered by WebAssembly
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
+#[clap(propagate_version = true)]
 pub struct Args {
     /// Location of the configuration file
     #[clap(short, long)]
     pub config_path: Option<PathBuf>,
+    #[clap(subcommand)]
+    pub commands: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+pub enum Commands {
+    /// Generates a CA
+    GenerateCa {
+        path: Option<PathBuf>,
+        #[clap(short)]
+        force: bool,
+    },
+    /// Initializes proxysaur
+    Init { path: Option<PathBuf> },
+    /// Adds a proxy to the configuration
+    AddProxy { path: Option<PathBuf> },
 }
 
 fn default_address() -> String {
@@ -25,7 +47,20 @@ pub enum Protocol {
     HttpForward,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl FromStr for Protocol {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "tcp" => Ok(Protocol::Tcp),
+            "http" => Ok(Protocol::Http),
+            "httpforward" => Ok(Protocol::HttpForward),
+            _ => Err(anyhow::Error::msg("Invalid protocol.")),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Builder)]
 pub struct Proxy {
     #[serde(default)]
     pub pre_request_wasi_module_path: Option<PathBuf>,
@@ -58,15 +93,26 @@ impl Proxy {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Config {
-    pub proxy: Vec<Proxy>,
+fn default_proxy() -> Vec<Proxy> {
+    vec![]
 }
 
-impl Config {
-    pub fn try_parse() -> Result<Config> {
-        let args = Args::parse();
-        Config::try_from(args)
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Config {
+    #[serde(default = "default_proxy")]
+    pub proxy: Vec<Proxy>,
+    pub ca_path: Option<PathBuf>,
+}
+
+impl Args {
+    pub fn new() -> Self {
+        Args::parse()
+    }
+}
+
+impl Default for Args {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -108,6 +154,7 @@ mod test {
         let (_tmp_dir, file_path) = tests();
         let args = Args {
             config_path: Some(file_path),
+            commands: None,
         };
         let config = Config::try_from(args).expect("should build the config object");
         assert_eq!(config.proxy.len(), 3);
@@ -123,7 +170,10 @@ mod test {
     #[test]
     fn parse_config_arg_no_path() {
         let (tmp_dir, _file_path) = tests();
-        let args = Args { config_path: None };
+        let args = Args {
+            config_path: None,
+            commands: None,
+        };
         let current_dir = std::env::current_dir().expect("should get the current directory");
         std::env::set_current_dir(tmp_dir.path()).expect("should set the current directory");
         let config = Config::try_from(args);
