@@ -248,7 +248,7 @@ fn error_payload(error: anyhow::Error) -> Response<Body> {
 }
 
 async fn http_proxy_service(
-    req: Request<Body>,
+    mut req: Request<Body>,
     proxy: Proxy,
     mut wasi_runtime: WasiRuntime,
     context: HttpContext,
@@ -259,9 +259,20 @@ async fn http_proxy_service(
     } else {
         "http".into()
     };
+    let p_and_q = req
+        .uri()
+        .path_and_query()
+        .map(|p_and_q| p_and_q.as_str())
+        .unwrap_or("/");
     let host = proxy.upstream_address();
     let req_path = proxy.request_wasi_module_path.clone();
     let resp_path = proxy.response_wasi_module_path.clone();
+    *req.uri_mut() = Uri::builder()
+        .scheme(scheme.as_str())
+        .authority(host.as_str())
+        .path_and_query(p_and_q)
+        .build()
+        .unwrap();
     let request = match process_request(
         &mut wasi_runtime,
         req,
