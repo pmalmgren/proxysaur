@@ -9,17 +9,16 @@ use hyper_alpn::AlpnConnector;
 use hyper_tls::HttpsConnector;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_rustls::TlsAcceptor;
-use wasi_runtime::{Linker, Store, WasiCtx, WasiCtxBuilder, WasiRuntime};
+use wasi_runtime::WasiRuntime;
 
-use crate::{
-    http::{
-        pre_request_add_to_linker, request_add_to_linker, response_add_to_linker,
-        ProxyHttpPreRequest, ProxyHttpRequest,
-    },
-    tcp::tunnel,
+use crate::tcp::tunnel;
+
+use super::{
+    hostname::Hostname,
+    pre_request::{pre_request::ProxyMode, process_pre_request},
+    request::process_request,
+    response::process_response,
 };
-
-use super::{hostname::Hostname, ProxyHttpResponse, ProxyMode};
 
 // Each protocol defines a context, and is passed in via process request
 #[derive(Clone)]
@@ -48,175 +47,6 @@ impl HttpContext {
         })
     }
 }
-
-struct RequestContext {
-    wasi: WasiCtx,
-    proxy_request: ProxyHttpRequest,
-}
-
-struct PreRequestContext {
-    wasi: WasiCtx,
-    proxy_request: ProxyHttpPreRequest,
-}
-
-struct ResponseContext {
-    wasi: WasiCtx,
-    proxy_response: ProxyHttpResponse,
-}
-
-async fn process_pre_request(
-    wasi_runtime: &mut WasiRuntime,
-    hostname: Hostname,
-    wasi_module_path: Option<PathBuf>,
-) -> Result<ProxyMode> {
-    let wasi_module_path = match wasi_module_path {
-        Some(wasi_module_path) => wasi_module_path,
-        None => {
-            return Ok(ProxyMode::Pass);
-        }
-    };
-
-    tracing::trace!("Building request.");
-    let proxy_request = ProxyHttpPreRequest::new(hostname);
-    tracing::trace!(?proxy_request, "Built request.");
-    let module = wasi_runtime
-        .fetch_module(wasi_module_path.as_path())
-        .await?;
-
-    let mut linker: Linker<PreRequestContext> = Linker::new(&wasi_runtime.engine);
-    let wasi = WasiCtxBuilder::new()
-        .inherit_stdio()
-        .inherit_args()?
-        .build();
-    tracing::trace!("Built WASI context.");
-    let ctx = PreRequestContext {
-        wasi,
-        proxy_request,
-    };
-
-    let mut store: Store<PreRequestContext> = Store::new(&wasi_runtime.engine, ctx);
-    wasi_runtime::add_to_linker(&mut linker, |s| &mut s.wasi)?;
-    tracing::trace!("Linked module.");
-
-    pre_request_add_to_linker(&mut linker, |ctx| -> &mut ProxyHttpPreRequest {
-        &mut ctx.proxy_request
-    })?;
-    tracing::trace!("Linked module with WIT.");
-
-    linker.module(&mut store, "", &module)?;
-    tracing::trace!("Added module to linker.");
-    linker
-        .get_default(&mut store, "")?
-        .typed::<(), (), _>(&store)?
-        .call(&mut store, ())?;
-    tracing::trace!("Called WASI module.");
-
-    let data = store.into_data();
-    tracing::trace!("Fetched request context from store.");
-    let proxy_mode = data.proxy_request.mode;
-    Ok(proxy_mode)
-}
-
-async fn process_request(
-    wasi_runtime: &mut WasiRuntime,
-    req: Request<Body>,
-    wasi_module_path: Option<PathBuf>,
-    scheme: &str,
-    host: &str,
-) -> Result<Request<Body>> {
-    let wasi_module_path = match wasi_module_path {
-        Some(wasi_module_path) => wasi_module_path,
-        None => {
-            return Ok(req);
-        }
-    };
-
-    tracing::trace!("Building request.");
-    let proxy_request = ProxyHttpRequest::new(req, scheme, host).await?;
-    tracing::trace!(?proxy_request, "Built request.");
-    let module = wasi_runtime
-        .fetch_module(wasi_module_path.as_path())
-        .await?;
-
-    let mut linker: Linker<RequestContext> = Linker::new(&wasi_runtime.engine);
-    let wasi = WasiCtxBuilder::new()
-        .inherit_stdio()
-        .inherit_args()?
-        .build();
-    tracing::trace!("Built WASI context.");
-    let ctx = RequestContext {
-        wasi,
-        proxy_request,
-    };
-
-    let mut store: Store<RequestContext> = Store::new(&wasi_runtime.engine, ctx);
-    wasi_runtime::add_to_linker(&mut linker, |s| &mut s.wasi)?;
-    tracing::trace!("Linked module.");
-
-    request_add_to_linker(&mut linker, |ctx| -> &mut ProxyHttpRequest {
-        &mut ctx.proxy_request
-    })?;
-    tracing::trace!("Linked module with WIT.");
-
-    linker.module(&mut store, "", &module)?;
-    tracing::trace!("Added module to linker.");
-    linker
-        .get_default(&mut store, "")?
-        .typed::<(), (), _>(&store)?
-        .call(&mut store, ())?;
-    tracing::trace!("Called WASI module.");
-
-    let data = store.into_data();
-    tracing::trace!("Fetched request context from store.");
-    let new_request: Request<Body> = Request::try_from(data.proxy_request)?;
-    tracing::trace!(?new_request, "Built new request.");
-    Ok(new_request)
-}
-
-async fn process_response(
-    wasi_runtime: &mut WasiRuntime,
-    resp: Response<Body>,
-    wasi_module_path: Option<PathBuf>,
-) -> Result<Response<Body>> {
-    let wasi_module_path = match wasi_module_path {
-        Some(path) => path,
-        None => {
-            return Ok(resp);
-        }
-    };
-    let proxy_response = ProxyHttpResponse::new(resp).await?;
-    let module = wasi_runtime
-        .fetch_module(wasi_module_path.as_path())
-        .await?;
-
-    let mut linker: Linker<ResponseContext> = Linker::new(&wasi_runtime.engine);
-    let wasi = WasiCtxBuilder::new()
-        .inherit_stdio()
-        .inherit_args()?
-        .build();
-    let ctx = ResponseContext {
-        wasi,
-        proxy_response,
-    };
-
-    let mut store: Store<ResponseContext> = Store::new(&wasi_runtime.engine, ctx);
-    wasi_runtime::add_to_linker(&mut linker, |s| &mut s.wasi)?;
-
-    response_add_to_linker(&mut linker, |ctx| -> &mut ProxyHttpResponse {
-        &mut ctx.proxy_response
-    })?;
-
-    linker.module(&mut store, "", &module)?;
-    linker
-        .get_default(&mut store, "")?
-        .typed::<(), (), _>(&store)?
-        .call(&mut store, ())?;
-
-    let data = store.into_data();
-    let new_response: Response<Body> = Response::try_from(data.proxy_response)?;
-    Ok(new_response)
-}
-
 async fn negotiate_version(scheme: &str, host: &str, context: &HttpContext) -> Result<Version> {
     let uri = Uri::builder()
         .scheme(scheme)
@@ -555,9 +385,10 @@ mod test {
         let mut wasi_path = std::env::current_dir().expect("should get the current directory");
         wasi_path.push("src/http/tests/http-response/target/wasm32-wasi/debug/http-response.wasm");
         let mut wasi_runtime = WasiRuntime::new().expect("should build the runtime");
-        let new_response = process_response(&mut wasi_runtime, response, Some(wasi_path))
-            .await
-            .expect("should process the response");
+        let new_response: Response<Body> =
+            process_response(&mut wasi_runtime, response, Some(wasi_path))
+                .await
+                .expect("should process the response");
 
         let (parts, body) = new_response.into_parts();
         assert_eq!(parts.status, 500);
