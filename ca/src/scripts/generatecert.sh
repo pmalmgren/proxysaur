@@ -25,6 +25,6 @@ DNS.1 = $DOMAIN
 EOF
 
 openssl x509 -req -in $DOMAIN.csr -CA myca.pem -CAkey myca.key -CAcreateserial \
--out $DOMAIN.crt -days 7 -sha256 -extfile $DOMAIN.ext -passin pass:test
+-out $DOMAIN.crt -days 1 -sha256 -extfile $DOMAIN.ext -passin pass:test
 
 echo "$3/$DOMAIN.crt $3/$DOMAIN.key"

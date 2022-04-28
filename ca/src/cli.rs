@@ -4,6 +4,8 @@ use tokio::io::AsyncWriteExt;
 
 use crate::{project_dirs, valid_ca_directory, CaError};
 
+const CERT_EXTENSIONS: &[&str] = &["crt", "key", "pem", "csr", "ext", "srl", "sh"];
+
 pub async fn generate_ca(path: Option<PathBuf>, force_overwrite: bool) -> Result<PathBuf> {
     let ca_dir = match path {
         Some(ca_dir) => ca_dir,
@@ -14,10 +16,30 @@ pub async fn generate_ca(path: Option<PathBuf>, force_overwrite: bool) -> Result
         }
     };
 
-    if valid_ca_directory(&ca_dir).await && !force_overwrite {
-        eprintln!("Refusing to overrwrite existing CA dir: {:?}", ca_dir);
-        return Ok(ca_dir);
-    }
+    match (valid_ca_directory(&ca_dir).await, force_overwrite) {
+        (true, true) => {
+            let mut files = tokio::fs::read_dir(&ca_dir).await?;
+            while let Ok(Some(file)) = files.next_entry().await {
+                let path = file.path();
+                let should_delete = if path.ends_with("config") {
+                    true
+                } else if let Some(Some(ext)) = file.path().extension().map(|path| path.to_str()) {
+                    CERT_EXTENSIONS.contains(&ext)
+                } else {
+                    false
+                };
+
+                if should_delete {
+                    tokio::fs::remove_file(path).await?;
+                }
+            }
+        }
+        (true, false) => {
+            eprintln!("Refusing to over write existing CA dir: {:?}", ca_dir);
+            return Ok(ca_dir);
+        }
+        _ => {}
+    };
 
     let ca_dir_str = ca_dir
         .to_str()
