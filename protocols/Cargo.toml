@@ -10,6 +10,7 @@ anyhow = "1.0.56"
 wasi-runtime = { path = "../wasi-runtime" }
 config = { path = "../config" }
 ca = { path = "../ca" }
+proxysaur-wit-bindings = { path = "../wit-bindings/export" }
 http = "0.2"
 hyper = { version = "0.14", features = ["full"] }
 hyper-alpn = "0.3.0"
@@ -18,4 +19,3 @@ thiserror = "1.0.30"
 tokio = { version = "1.17.0", features = ["full"] }
 tokio-rustls = "0.23.1"
 tracing = "0.1.34"
-wit-bindgen-wasmtime = { git = "https://github.com/bytecodealliance/wit-bindgen", rev = "43411623c132801a2ac1bfc338e9b988e9a8bacb", features = ["async"] }

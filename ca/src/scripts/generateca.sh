@@ -9,5 +9,5 @@ fi
 cd $1
 
 openssl genrsa -out myca.key 2048
-openssl req -x509 -new -nodes -key myca.key -sha256 -days 7 -out myca.pem -subj "/C=US/ST=NC/L=Asheville/O=prox/OU=proxy"
+openssl req -x509 -new -nodes -key myca.key -sha256 -days 1 -out myca.pem -subj "/C=US/ST=NC/L=Asheville/O=prox/OU=proxy"
 openssl x509 -in myca.pem -inform PEM -out myca.crt

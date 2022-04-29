@@ -1395,12 +1395,12 @@ dependencies = [
  "hyper",
  "hyper-alpn",
  "hyper-tls",
+ "proxysaur-wit-bindings",
  "thiserror",
  "tokio",
  "tokio-rustls 0.23.3",
  "tracing",
  "wasi-runtime",
- "wit-bindgen-wasmtime",
 ]
 
 [[package]]
@@ -1419,6 +1419,21 @@ dependencies = [
  "wasi-runtime",
  "wasmtime",
  "wasmtime-wasi",
+]
+
+[[package]]
+name = "proxysaur-bindings"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen-rust",
+]
+
+[[package]]
+name = "proxysaur-wit-bindings"
+version = "0.1.0"
+dependencies = [
+ "proxysaur-bindings",
+ "wit-bindgen-wasmtime",
 ]
 
 [[package]]
@@ -2755,6 +2770,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "wit-bindgen-gen-rust-wasm"
+version = "0.1.0"
+source = "git+https://github.com/bytecodealliance/wit-bindgen?rev=43411623c132801a2ac1bfc338e9b988e9a8bacb#43411623c132801a2ac1bfc338e9b988e9a8bacb"
+dependencies = [
+ "heck 0.3.3",
+ "wit-bindgen-gen-core",
+ "wit-bindgen-gen-rust",
+]
+
+[[package]]
 name = "wit-bindgen-gen-wasmtime"
 version = "0.1.0"
 source = "git+https://github.com/bytecodealliance/wit-bindgen?rev=43411623c132801a2ac1bfc338e9b988e9a8bacb#43411623c132801a2ac1bfc338e9b988e9a8bacb"
@@ -2762,6 +2787,27 @@ dependencies = [
  "heck 0.3.3",
  "wit-bindgen-gen-core",
  "wit-bindgen-gen-rust",
+]
+
+[[package]]
+name = "wit-bindgen-rust"
+version = "0.1.0"
+source = "git+https://github.com/bytecodealliance/wit-bindgen?rev=43411623c132801a2ac1bfc338e9b988e9a8bacb#43411623c132801a2ac1bfc338e9b988e9a8bacb"
+dependencies = [
+ "async-trait",
+ "bitflags",
+ "wit-bindgen-rust-impl",
+]
+
+[[package]]
+name = "wit-bindgen-rust-impl"
+version = "0.1.0"
+source = "git+https://github.com/bytecodealliance/wit-bindgen?rev=43411623c132801a2ac1bfc338e9b988e9a8bacb#43411623c132801a2ac1bfc338e9b988e9a8bacb"
+dependencies = [
+ "proc-macro2",
+ "syn",
+ "wit-bindgen-gen-core",
+ "wit-bindgen-gen-rust-wasm",
 ]
 
 [[package]]
