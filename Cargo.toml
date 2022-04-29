@@ -8,6 +8,7 @@ exclude = [
     "wit-bindings/tests/http-pre-request",
     "wit-bindings/tests/http-request",
     "wit-bindings/tests/http-response",
+    "http-forward-proxy"
 ]
 
 [dependencies]
