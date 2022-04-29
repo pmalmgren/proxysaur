@@ -354,7 +354,8 @@ mod test {
             .expect("should build the request");
 
         let mut wasi_path = std::env::current_dir().expect("should get the current directory");
-        wasi_path.push("../wit-bindings/tests/http-request/target/wasm32-wasi/debug/http-request.wasm");
+        wasi_path
+            .push("../wit-bindings/tests/http-request/target/wasm32-wasi/debug/http-request.wasm");
         let mut wasi_runtime = WasiRuntime::new().expect("should build the runtime");
         let new_request = process_request(
             &mut wasi_runtime,
@@ -383,7 +384,9 @@ mod test {
             .expect("should build the response");
 
         let mut wasi_path = std::env::current_dir().expect("should get the current directory");
-        wasi_path.push("../wit-bindings/tests/http-response/target/wasm32-wasi/debug/http-response.wasm");
+        wasi_path.push(
+            "../wit-bindings/tests/http-response/target/wasm32-wasi/debug/http-response.wasm",
+        );
         let mut wasi_runtime = WasiRuntime::new().expect("should build the runtime");
         let new_response: Response<Body> =
             process_response(&mut wasi_runtime, response, Some(wasi_path))
