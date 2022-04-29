@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use crate::config::{deserialize_regex, serialize_regex};
 use http::header::{HeaderName, HeaderValue};
-use proxysaur_bindings::http::{request::HttpRequest, response::HttpResponse};
+use proxysaur_bindings::http::{request::HttpRequestResult as HttpRequest, response::HttpResponse};
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -387,18 +387,18 @@ impl RequestRewrite {
 //     }
 // }
 
-// impl ResponseRewrite {
-//     /// Exists because typically the hyper client will consume the request
-//     pub fn should_rewrite_response<T>(&self, req: &HttpRequest) -> bool {
-//         self.when[..]
-//             .into_iter()
-//             .all(|when: &RuleMatch| when.matches(req))
-//     }
+impl ResponseRewrite {
+    /// Exists because typically the hyper client will consume the request
+    pub fn should_rewrite_response<T>(&self, req: &HttpRequest) -> bool {
+        self.when[..]
+            .into_iter()
+            .all(|when: &RuleMatch| when.matches(req))
+    }
 
-//     pub fn rewrite(&self, resp: HttpResponse) -> HttpResponse {
-//         self.rewrite.rewrite_resp(resp)
-//     }
-// }
+    pub fn rewrite(&self, resp: HttpResponse) -> HttpResponse {
+        self.rewrite.rewrite_resp(resp)
+    }
+}
 
 // #[cfg(test)]
 // mod response_rewrite_tests {

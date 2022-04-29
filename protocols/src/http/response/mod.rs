@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use config::Proxy;
+use http::{request::Parts, Uri};
 use hyper::{Body, Response};
 use proxysaur_wit_bindings::http::response;
 use proxysaur_wit_bindings::config::config::add_to_linker;
@@ -25,7 +26,7 @@ impl TryFrom<ProxyHttpResponse> for Response<Body> {
 }
 
 impl ProxyHttpResponse {
-    pub async fn new(response: Response<Body>) -> Result<Self, ProxyHttpError> {
+    pub async fn new(response: Response<Body>, request: Parts) -> Result<Self, ProxyHttpError> {
         let (parts, body) = response.into_parts();
         let headers = parts
             .headers
@@ -35,11 +36,22 @@ impl ProxyHttpResponse {
                 Err(_) => None,
             })
             .collect();
+        let request = response::HttpRequest {
+            path: parts.uri.path_and_query(),
+            authority: request.uri.authority().map(|authority| authority.as_str()).unwrap_or_else(|| "").to_string(),
+            host: request.uri.host().unwrap_or_else(|| "https").to_string(),
+            scheme: request.uri.scheme_str().unwrap_or_else(|| "https").to_string(),
+            version: request.version,
+            headers: vec![],
+            method: request.method.to_string(),
+            body: vec![],
+        };
         let body = hyper::body::to_bytes(body).await?.to_vec();
         let response = response::HttpResponse {
             headers,
             status: parts.status.as_u16(),
             body,
+            request
         };
 
         Ok(Self { response })
@@ -99,6 +111,35 @@ impl response::Response for ProxyHttpResponse {
         }
         Ok(())
     }
+
+    fn http_response_set(&mut self, response: response::HttpResponseParam<'_>) {
+        let headers: Vec<(String, String)> = response
+            .headers
+            .iter()
+            .map(|(n, v)| (n.to_string(), v.to_string()))
+            .collect();
+        let req_headers: Vec<(String, String)> = response
+            .request
+            .headers
+            .iter()
+            .map(|(n, v)| (n.to_string(), v.to_string()))
+            .collect();
+        self.response = response::HttpResponseResult {
+            headers: response.headers,
+            status: response.status,
+            body: response.body.to_vec(),
+            request: response::HttpRequestResult {
+                path: request.path.into(),
+                authority: request.authority.into(),
+                host: request.host.into(),
+                scheme: request.scheme.into(),
+                version: request.version.into(),
+                method: request.method.into(),
+                body: request.body.into(),
+                headers: req_headers,
+            },
+        };
+    }
 }
 struct ResponseContext {
     wasi: WasiCtx,
@@ -111,6 +152,7 @@ pub async fn process_response(
     resp: Response<Body>,
     wasi_module_path: Option<PathBuf>,
     proxy: Proxy,
+    uri: Uri
 ) -> Result<Response<Body>> {
     let wasi_module_path = match wasi_module_path {
         Some(path) => path,
@@ -118,7 +160,7 @@ pub async fn process_response(
             return Ok(resp);
         }
     };
-    let proxy_response = ProxyHttpResponse::new(resp).await?;
+    let proxy_response = ProxyHttpResponse::new(resp, &uri).await?;
     let module = wasi_runtime
         .fetch_module(wasi_module_path.as_path())
         .await?;

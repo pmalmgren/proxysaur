@@ -4,7 +4,7 @@ use anyhow::Result;
 use config::Proxy;
 use http::Uri;
 use hyper::{Body, Request};
-use proxysaur_wit_bindings::http::request;
+use proxysaur_wit_bindings::http::{request, response};
 use proxysaur_wit_bindings::config::config::add_to_linker;
 use wasi_runtime::{Linker, Store, WasiCtx, WasiCtxBuilder, WasiRuntime};
 
@@ -14,7 +14,8 @@ use super::{ProxyHttpError, config::ProxyConfig};
 
 #[derive(Debug)]
 pub struct ProxyHttpRequest {
-    request: request::HttpRequest,
+    request: request::HttpRequestResult,
+    response: Option<response::HttpResponse>,
 }
 
 impl TryFrom<ProxyHttpRequest> for Request<Body> {
@@ -71,7 +72,7 @@ impl ProxyHttpRequest {
             })
             .collect();
         let body = hyper::body::to_bytes(body).await?.to_vec();
-        let request = request::HttpRequest {
+        let request = request::HttpRequestResult {
             path,
             authority,
             scheme,
@@ -81,12 +82,12 @@ impl ProxyHttpRequest {
             host,
             body,
         };
-        Ok(Self { request })
+        Ok(Self { request, response: None })
     }
 }
 
 impl request::Request for ProxyHttpRequest {
-    fn http_request_get(&mut self) -> Result<request::HttpRequest, request::Error> {
+    fn http_request_get(&mut self) -> Result<request::HttpRequestResult, request::Error> {
         Ok(self.request.clone())
     }
 
@@ -140,6 +141,14 @@ impl request::Request for ProxyHttpRequest {
         Ok(())
     }
 
+    fn http_request_set_body(
+        &mut self,
+        body: request::BodyParam<'_>,
+    ) -> Result<(), request::Error> {
+        self.request.body = body.to_vec();
+        Ok(())
+    }
+
     fn http_request_rm_header(&mut self, header: &str) -> Result<(), request::Error> {
         if let Some((idx, _)) = self
             .request
@@ -153,12 +162,36 @@ impl request::Request for ProxyHttpRequest {
         Ok(())
     }
 
-    fn http_request_set_body(
-        &mut self,
-        body: request::BodyParam<'_>,
-    ) -> Result<(), request::Error> {
-        self.request.body = body.to_vec();
-        Ok(())
+    fn http_request_set(&mut self, request: request::HttpRequestParam<'_>) {
+        let headers: Vec<(String, String)> = request
+            .headers
+            .iter()
+            .map(|(n, v)| (n.to_string(), v.to_string()))
+            .collect();
+        self.request = request::HttpRequestResult {
+            path: request.path.into(),
+            authority: request.authority.into(),
+            host: request.host.into(),
+            scheme: request.scheme.into(),
+            version: request.version.into(),
+            method: request.method.into(),
+            body: request.body.into(),
+            headers,
+        };
+    }
+
+    fn http_response_set(&mut self, response: request::HttpResponse<'_>) {
+        let headers: Vec<(String, String)> = response
+            .headers
+            .iter()
+            .map(|(n, v)| (n.to_string(), v.to_string()))
+            .collect();
+        self.response = Some(request::HttpResponse {
+            headers,
+            status: response.status,
+            body: response.body.into(),
+            request: self.request.clone()
+        });
     }
 }
 

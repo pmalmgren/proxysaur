@@ -97,6 +97,7 @@ async fn http_proxy_service(
     let host = proxy.upstream_address();
     let req_path = proxy.request_wasi_module_path.clone();
     let resp_path = proxy.response_wasi_module_path.clone();
+    let uri = req.uri().clone();
     *req.uri_mut() = Uri::builder()
         .scheme(scheme.as_str())
         .authority(host.as_str())
@@ -159,7 +160,7 @@ async fn http_proxy_service(
         }
     };
 
-    match process_response(&mut wasi_runtime, resp, resp_path, proxy).await {
+    match process_response(&mut wasi_runtime, resp, resp_path, proxy, uri).await {
         Ok(resp) => {
             tracing::info!(new_response = ?resp, "New response.");
             Ok(resp)
@@ -237,6 +238,10 @@ async fn proxy_https(
         match hyper::upgrade::on(req).await {
             Ok(upgraded) => {
                 let path = proxy.pre_request_wasi_module_path.clone();
+                let mut proxy = proxy.clone();
+                proxy.upstream_address = hostname.host.clone();
+                proxy.upstream_port = hostname.port;
+                proxy.tls = false;
                 match process_pre_request(&mut wasi_runtime, hostname.clone(), path, proxy.clone())
                     .await
                     .unwrap_or(ProxyMode::Pass)
@@ -345,7 +350,7 @@ mod test {
 
     use super::{process_request, WasiRuntime};
     use config::Proxy;
-    use http::Response;
+    use http::{Response, Uri};
     use hyper::{Body, Request};
 
     #[tokio::test]
@@ -392,8 +397,9 @@ mod test {
         );
         let mut wasi_runtime = WasiRuntime::new().expect("should build the runtime");
         let proxy = Proxy::new();
+        let uri = Uri::builder().build().expect("to build the damn URI");
         let new_response: Response<Body> =
-            process_response(&mut wasi_runtime, response, Some(wasi_path), proxy)
+            process_response(&mut wasi_runtime, response, Some(wasi_path), proxy, uri)
                 .await
                 .expect("should process the response");
 

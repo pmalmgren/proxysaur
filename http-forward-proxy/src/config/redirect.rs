@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use http::Uri;
-use proxysaur_bindings::http::request::HttpRequest;
+use proxysaur_bindings::http::request::HttpRequestResult as HttpRequest;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::config::rewrite::RuleMatch;
