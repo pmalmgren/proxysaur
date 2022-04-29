@@ -1,14 +1,16 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
+use config::Proxy;
 use http::Uri;
 use hyper::{Body, Request};
 use proxysaur_wit_bindings::http::request;
+use proxysaur_wit_bindings::config::config::add_to_linker;
 use wasi_runtime::{Linker, Store, WasiCtx, WasiCtxBuilder, WasiRuntime};
 
 use crate::http::convert_version;
 
-use super::ProxyHttpError;
+use super::{ProxyHttpError, config::ProxyConfig};
 
 #[derive(Debug)]
 pub struct ProxyHttpRequest {
@@ -163,6 +165,7 @@ impl request::Request for ProxyHttpRequest {
 struct RequestContext {
     wasi: WasiCtx,
     proxy_request: ProxyHttpRequest,
+    proxy_config: ProxyConfig,
 }
 
 pub async fn process_request(
@@ -171,6 +174,7 @@ pub async fn process_request(
     wasi_module_path: Option<PathBuf>,
     scheme: &str,
     host: &str,
+    proxy: Proxy,
 ) -> Result<Request<Body>> {
     let wasi_module_path = match wasi_module_path {
         Some(wasi_module_path) => wasi_module_path,
@@ -195,6 +199,7 @@ pub async fn process_request(
     let ctx = RequestContext {
         wasi,
         proxy_request,
+        proxy_config: ProxyConfig { proxy, error: "".into() },
     };
 
     let mut store: Store<RequestContext> = Store::new(&wasi_runtime.engine, ctx);
@@ -203,6 +208,9 @@ pub async fn process_request(
 
     request::add_to_linker(&mut linker, |ctx| -> &mut ProxyHttpRequest {
         &mut ctx.proxy_request
+    })?;
+    add_to_linker(&mut linker, |ctx| -> &mut ProxyConfig {
+        &mut ctx.proxy_config
     })?;
     tracing::trace!("Linked module with WIT.");
 

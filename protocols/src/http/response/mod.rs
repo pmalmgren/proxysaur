@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
+use config::Proxy;
 use hyper::{Body, Response};
 use proxysaur_wit_bindings::http::response;
+use proxysaur_wit_bindings::config::config::add_to_linker;
 use wasi_runtime::{Linker, Store, WasiCtx, WasiCtxBuilder, WasiRuntime};
 
-use super::ProxyHttpError;
+use super::{ProxyHttpError, config::ProxyConfig};
 
 pub struct ProxyHttpResponse {
     response: response::HttpResponse,
@@ -101,12 +103,14 @@ impl response::Response for ProxyHttpResponse {
 struct ResponseContext {
     wasi: WasiCtx,
     proxy_response: ProxyHttpResponse,
+    config: ProxyConfig,
 }
 
 pub async fn process_response(
     wasi_runtime: &mut WasiRuntime,
     resp: Response<Body>,
     wasi_module_path: Option<PathBuf>,
+    proxy: Proxy,
 ) -> Result<Response<Body>> {
     let wasi_module_path = match wasi_module_path {
         Some(path) => path,
@@ -127,6 +131,7 @@ pub async fn process_response(
     let ctx = ResponseContext {
         wasi,
         proxy_response,
+        config: ProxyConfig { proxy, error: "".into() },
     };
 
     let mut store: Store<ResponseContext> = Store::new(&wasi_runtime.engine, ctx);
@@ -134,6 +139,10 @@ pub async fn process_response(
 
     response::add_to_linker(&mut linker, |ctx| -> &mut ProxyHttpResponse {
         &mut ctx.proxy_response
+    })?;
+
+    add_to_linker(&mut linker, |ctx| -> &mut ProxyConfig {
+        &mut ctx.config
     })?;
 
     linker.module(&mut store, "", &module)?;

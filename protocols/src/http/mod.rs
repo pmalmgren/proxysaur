@@ -5,6 +5,7 @@ mod hostname;
 mod pre_request;
 mod request;
 mod response;
+mod config;
 
 pub mod proxy;
 
