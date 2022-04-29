@@ -38,7 +38,7 @@ dependencies = [
 name = "http-pre-request"
 version = "0.1.0"
 dependencies = [
- "wit-bindgen-rust",
+ "proxysaur-bindings",
 ]
 
 [[package]]
@@ -60,6 +60,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec757218438d5fda206afc041538b2f6d889286160d649a86a24d37e1235afd1"
 dependencies = [
  "unicode-xid",
+]
+
+[[package]]
+name = "proxysaur-bindings"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen-rust",
 ]
 
 [[package]]

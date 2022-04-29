@@ -1,5 +1,4 @@
-use pre_request::{HttpPreRequest, ProxyMode};
-wit_bindgen_rust::import!("../../pre-request.wit");
+use proxysaur_bindings::http::pre_request::{self, HttpPreRequest, ProxyMode};
 
 fn main() {
     let request: HttpPreRequest = pre_request::http_request_get();

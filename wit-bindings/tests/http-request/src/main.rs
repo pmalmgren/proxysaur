@@ -1,6 +1,4 @@
-use request::HttpRequest;
-
-wit_bindgen_rust::import!("../../request.wit");
+use proxysaur_bindings::http::request::{self, HttpRequest};
 
 fn main() {
     let request: HttpRequest = request::http_request_get().expect("should get the request");

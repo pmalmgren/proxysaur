@@ -1,6 +1,4 @@
-use response::HttpResponse;
-
-wit_bindgen_rust::import!("../../response.wit");
+use proxysaur_bindings::http::response::{self, HttpResponse};
 
 fn main() {
     let response: HttpResponse = response::http_response_get().expect("should get the response");
