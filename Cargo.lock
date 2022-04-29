@@ -1395,6 +1395,7 @@ dependencies = [
  "hyper",
  "hyper-alpn",
  "hyper-tls",
+ "proxysaur-wit-bindings",
  "thiserror",
  "tokio",
  "tokio-rustls 0.23.3",
@@ -1419,6 +1420,13 @@ dependencies = [
  "wasi-runtime",
  "wasmtime",
  "wasmtime-wasi",
+]
+
+[[package]]
+name = "proxysaur-wit-bindings"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen-wasmtime",
 ]
 
 [[package]]

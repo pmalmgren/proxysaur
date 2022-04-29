@@ -10,6 +10,7 @@ anyhow = "1.0.56"
 wasi-runtime = { path = "../wasi-runtime" }
 config = { path = "../config" }
 ca = { path = "../ca" }
+proxysaur-wit-bindings = { path = "../wit-bindings/export" }
 http = "0.2"
 hyper = { version = "0.14", features = ["full"] }
 hyper-alpn = "0.3.0"

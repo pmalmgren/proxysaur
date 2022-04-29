@@ -1,8 +1,8 @@
-mod bindings;
 use std::path::PathBuf;
 
 use anyhow::Result;
-pub use bindings::pre_request;
+use proxysaur_wit_bindings::http::pre_request;
+pub use proxysaur_wit_bindings::http::pre_request::ProxyMode;
 use wasi_runtime::{Linker, Store, WasiCtx, WasiCtxBuilder, WasiRuntime};
 
 use super::hostname::Hostname;

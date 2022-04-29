@@ -1,9 +1,8 @@
-mod bindings;
 use std::path::PathBuf;
 
 use anyhow::Result;
-pub use bindings::response;
 use hyper::{Body, Response};
+use proxysaur_wit_bindings::http::response;
 use wasi_runtime::{Linker, Store, WasiCtx, WasiCtxBuilder, WasiRuntime};
 
 use super::ProxyHttpError;

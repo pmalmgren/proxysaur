@@ -1,10 +1,9 @@
-mod bindings;
 use std::path::PathBuf;
 
 use anyhow::Result;
-pub use bindings::request;
 use http::Uri;
 use hyper::{Body, Request};
+use proxysaur_wit_bindings::http::request;
 use wasi_runtime::{Linker, Store, WasiCtx, WasiCtxBuilder, WasiRuntime};
 
 use crate::http::convert_version;

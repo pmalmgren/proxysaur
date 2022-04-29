@@ -15,7 +15,7 @@ use crate::tcp::tunnel;
 
 use super::{
     hostname::Hostname,
-    pre_request::{pre_request::ProxyMode, process_pre_request},
+    pre_request::{process_pre_request, ProxyMode},
     request::process_request,
     response::process_response,
 };
