@@ -358,6 +358,8 @@ pub async fn http_forward(
 
 #[cfg(test)]
 mod test {
+    use std::path::PathBuf;
+
     use crate::http::proxy::process_response;
 
     use super::{process_request, WasiRuntime};
@@ -375,7 +377,8 @@ mod test {
         let mut wasi_path = std::env::current_dir().expect("should get the current directory");
         wasi_path
             .push("../wit-bindings/tests/http-request/target/wasm32-wasi/debug/http-request.wasm");
-        let mut wasi_runtime = WasiRuntime::new().expect("should build the runtime");
+        let mut wasi_runtime =
+            WasiRuntime::new(PathBuf::from("/")).expect("should build the runtime");
         let new_request = process_request(
             &mut wasi_runtime,
             request,
@@ -407,7 +410,8 @@ mod test {
         wasi_path.push(
             "../wit-bindings/tests/http-response/target/wasm32-wasi/debug/http-response.wasm",
         );
-        let mut wasi_runtime = WasiRuntime::new().expect("should build the runtime");
+        let mut wasi_runtime =
+            WasiRuntime::new(PathBuf::from("/")).expect("should build the runtime");
         let proxy = Proxy::new();
         let uri = Uri::builder()
             .scheme("https")
