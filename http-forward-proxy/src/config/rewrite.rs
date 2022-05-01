@@ -130,29 +130,39 @@ pub enum Rewrite {
     Status(StatusRewrite),
 }
 
+fn add_content_length(length: usize, headers: &mut Vec<(String, String)>) {
+    let inserted = match headers
+        .iter_mut()
+        .find(|(h, _v)| h == http::header::CONTENT_LENGTH.as_str())
+    {
+        Some(mut header) => {
+            header.1 = length.to_string();
+            true
+        }
+        None => false,
+    };
+    if !inserted {
+        headers.push((http::header::CONTENT_LENGTH.to_string(), length.to_string()));
+    }
+}
+
+fn remove_content_encoding(headers: &mut Vec<(String, String)>) {
+    if let Some((index, _)) = headers
+        .iter_mut()
+        .enumerate()
+        .find(|(_idx, (h, _v))| h == http::header::CONTENT_ENCODING.as_str())
+    {
+        headers.remove(index);
+    }
+}
+
 impl Rewrite {
     pub fn rewrite_req(&self, mut req: HttpRequest) -> HttpRequest {
         match self {
             Rewrite::Body(rewrite) => {
                 let replace = rewrite.replace_with.clone();
                 req.body = replace;
-                let inserted = match req
-                    .headers
-                    .iter_mut()
-                    .find(|(h, _v)| h == http::header::CONTENT_LENGTH.as_str())
-                {
-                    Some(mut header) => {
-                        header.1 = req.body.len().to_string();
-                        true
-                    }
-                    None => false,
-                };
-                if !inserted {
-                    req.headers.push((
-                        http::header::CONTENT_LENGTH.to_string(),
-                        req.body.len().to_string(),
-                    ));
-                }
+                add_content_length(req.body.len(), &mut req.headers);
                 req
             }
             Rewrite::Header(rewrite) => {
@@ -180,23 +190,8 @@ impl Rewrite {
             Rewrite::Body(rewrite) => {
                 let replace = rewrite.replace_with.clone();
                 resp.body = replace;
-                let inserted = match resp
-                    .headers
-                    .iter_mut()
-                    .find(|(h, _v)| h == http::header::CONTENT_LENGTH.as_str())
-                {
-                    Some(mut header) => {
-                        header.1 = resp.body.len().to_string();
-                        true
-                    }
-                    None => false,
-                };
-                if !inserted {
-                    resp.headers.push((
-                        http::header::CONTENT_LENGTH.to_string(),
-                        resp.body.len().to_string(),
-                    ));
-                }
+                add_content_length(resp.body.len(), &mut resp.headers);
+                remove_content_encoding(&mut resp.headers);
             }
             Rewrite::Header(rewrite) => {
                 rewrite.do_rewrite(&mut resp.headers);
