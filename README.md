@@ -1,41 +1,11 @@
 # proxysaur
 
-A network debugging proxy multitool powered by WebAssembly.
+A network debugging proxy tool.
 
 ## Installation
-
-### macOS
-
-```bash
-$ brew tap proxysaur/proxysaur
-$ brew install proxysaur
-```
-
-### Debian-based Linux
-
-```bash
-$ apt-get install proxysaur
-```
-
-### Releases page
 
 Navigate to the [releases](releases) page and download a compiled release for your platform.
 
 ## Getting started
 
-### Configuration
-
-proxysaur looks for a configuration file called `proxysaur.toml` in the following directories:
-
-1. The directory specified in the CLI flag `--config-path`
-2. The current directory
-3. In `~/.config/proxysaur/`
-
-### Server types
-
-proxysaur can proxy and debug a few different kinds of servers:
-
-- HTTP
-- Redis
-- gRPC
-- PostgreSQL
+Head over to the [docs page](https://proxysaur.us/docs) to learn about how to use proxysaur to debug HTTP applications.

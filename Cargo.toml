@@ -1,3 +1,5 @@
+cargo-features = ["strip"]
+
 [package]
 name = "proxysaur"
 version = "0.1.0"
@@ -27,3 +29,8 @@ wasmtime = "0.35.3"
 wasmtime-wasi = "0.35.3"
 
 [dev-dependencies]
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
