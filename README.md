@@ -4,7 +4,7 @@ A network debugging proxy tool.
 
 ## Installation
 
-Navigate to the [releases](releases) page and download a compiled release for your platform.
+Navigate to the [releases](https://github.com/pmalmgren/proxysaur/releases) page and download a compiled release for your platform.
 
 ## Getting started
 
