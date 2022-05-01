@@ -41,14 +41,8 @@ fn main() {
 
     let response_rewrites = &host_config.response_rewrites;
     let resp_rewrites: Vec<&ResponseRewrite> = response_rewrites
-        .into_iter()
-        .filter_map(|rewrite| {
-            if rewrite.should_rewrite_response(&request) {
-                Some(rewrite)
-            } else {
-                None
-            }
-        })
+        .iter()
+        .filter(|rewrite| rewrite.should_rewrite_response(&request))
         .collect();
 
     for rewrite in resp_rewrites.iter() {

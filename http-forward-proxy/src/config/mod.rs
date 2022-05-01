@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 pub mod intercept;
 pub mod redirect;
 pub mod rewrite;

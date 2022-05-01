@@ -220,12 +220,9 @@ pub struct BodyRewrite {
     pub(crate) replace_with: Vec<u8>,
 }
 
-fn serialize_replace<S: Serializer>(
-    replace_with: &Vec<u8>,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
+fn serialize_replace<S: Serializer>(replace_with: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
     let val =
-        std::str::from_utf8(&replace_with).map_err(|_| serde::ser::Error::custom("UTF-8 error"))?;
+        std::str::from_utf8(replace_with).map_err(|_| serde::ser::Error::custom("UTF-8 error"))?;
     serializer.serialize_str(val)
 }
 
@@ -249,17 +246,13 @@ pub struct HeaderRewrite {
 }
 
 impl HeaderRewrite {
-    pub fn do_rewrite(&self, headers: &mut Vec<(String, String)>) {
-        let matching_header = headers
-            .iter()
-            .enumerate()
-            .filter(|(_idx, (name, value))| {
-                self.header_match
-                    .header_name
-                    .matches(name.to_lowercase().as_str())
-                    && self.header_match.header_value.matches(value)
-            })
-            .next();
+    pub fn do_rewrite(&self, headers: &mut [(String, String)]) {
+        let matching_header = headers.iter().enumerate().find(|(_idx, (name, value))| {
+            self.header_match
+                .header_name
+                .matches(name.to_lowercase().as_str())
+                && self.header_match.header_value.matches(value)
+        });
 
         if let Some((idx, (name, value))) = matching_header {
             let new_header_name = self
@@ -336,7 +329,7 @@ pub struct RequestRewrite {
 impl RequestRewrite {
     pub fn should_rewrite_request(&self, req: &HttpRequest) -> bool {
         self.when[..]
-            .into_iter()
+            .iter()
             .all(|when: &RuleMatch| when.matches(req))
     }
 
@@ -380,7 +373,7 @@ mod request_rewrite_tests {
         let new_value = new_req
             .headers
             .iter()
-            .find(|(h, v)| h == http::header::ACCESS_CONTROL_ALLOW_ORIGIN.as_str())
+            .find(|(h, _v)| h == http::header::ACCESS_CONTROL_ALLOW_ORIGIN.as_str())
             .expect("should have a header");
         assert_eq!(new_value.1, "*");
     }
@@ -425,7 +418,7 @@ impl ResponseRewrite {
     /// Exists because typically the hyper client will consume the request
     pub fn should_rewrite_response(&self, req: &HttpRequest) -> bool {
         self.when[..]
-            .into_iter()
+            .iter()
             .all(|when: &RuleMatch| when.matches(req))
     }
 

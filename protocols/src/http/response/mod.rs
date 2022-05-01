@@ -55,8 +55,8 @@ impl ProxyHttpResponse {
                 .map(|authority| authority.as_str())
                 .unwrap_or_else(|| "")
                 .to_string(),
-            request_host: uri.host().unwrap_or_else(|| "https").to_string(),
-            request_scheme: uri.scheme_str().unwrap_or_else(|| "https").to_string(),
+            request_host: uri.host().unwrap_or("https").to_string(),
+            request_scheme: uri.scheme_str().unwrap_or("https").to_string(),
             request_version: format!("{:?}", version),
             request_headers: vec![],
             request_method: method.to_string(),

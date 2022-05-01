@@ -68,16 +68,14 @@ impl FileDestination {
         };
         path = path.join(req_path);
 
-        if self.root_index {
-            if req.path.ends_with('/') {
-                path = path.join("index");
-            }
+        if self.root_index && req.path.ends_with('/') {
+            path = path.join("index");
         }
 
         if let Some(suffix) = &self.file_suffix {
             if let Some(Some(file_name)) = path.file_name().map(|f| f.to_str()) {
                 let mut new_file_name = String::from(file_name);
-                new_file_name.push_str(&suffix);
+                new_file_name.push_str(suffix);
                 path.set_file_name(new_file_name);
             }
         }
@@ -86,7 +84,7 @@ impl FileDestination {
 
     /// Returns a response with the file, if it exists and is readable.
     pub fn resp(&self, req: &HttpRequest) -> Result<HttpResponse, FileDestinationError> {
-        let path = self.path_for_request(&req);
+        let path = self.path_for_request(req);
         let contents = std::fs::read(path).map_err(FileDestinationError::from)?;
         Ok(HttpResponse {
             headers: vec![
@@ -160,7 +158,7 @@ impl RequestRedirect {
 
     pub fn should_redirect_request(&self, req: &HttpRequest) -> bool {
         self.when[..]
-            .into_iter()
+            .iter()
             .all(|when: &RuleMatch| when.matches(req))
     }
 

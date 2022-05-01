@@ -86,6 +86,12 @@ pub struct Proxy {
     pub upstream_port: u16,
 }
 
+impl Default for Proxy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Proxy {
     pub fn new() -> Self {
         Self {

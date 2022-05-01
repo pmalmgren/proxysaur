@@ -84,7 +84,7 @@ async fn http_proxy_service(
     context: HttpContext,
     version: Option<Version>,
 ) -> Result<Response<Body>, Infallible> {
-    let scheme: String = if *&proxy.tls {
+    let scheme: String = if proxy.tls {
         "https".into()
     } else {
         "http".into()
@@ -421,7 +421,7 @@ mod test {
             .body(Body::from(""))
             .expect("");
         let uri = req.uri().clone();
-        let version = req.version().clone();
+        let version = req.version();
         let method = req.method().clone();
 
         let new_response: Response<Body> = process_response(

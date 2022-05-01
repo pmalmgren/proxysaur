@@ -46,7 +46,7 @@ mod test {
         HeaderMatch, HeaderRewrite, MatchValue, Rewrite, RuleMatch, StatusRewrite,
     };
 
-    const CONFIG: &'static str = r#"
+    const CONFIG: &str = r#"
     hosts:
       test3.com:
         scheme: https
@@ -125,10 +125,10 @@ mod test {
 
     #[test]
     fn test_serialize() {
-        let config: InterceptConfig = serde_yaml::from_str(&CONFIG).expect("should serialize");
+        let config: InterceptConfig = serde_yaml::from_str(CONFIG).expect("should serialize");
         let host = config
             .hosts
-            .get("test.com".into())
+            .get("test.com")
             .expect("should contain the key");
         assert_eq!(host.response_rewrites.len(), 1);
     }
