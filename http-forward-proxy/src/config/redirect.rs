@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use http::Uri;
-use proxysaur_bindings::http::request::HttpRequestResult as HttpRequest;
+use proxysaur_bindings::http::{request::HttpRequestResult as HttpRequest, response::HttpResponse};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::config::rewrite::RuleMatch;
@@ -85,9 +85,30 @@ impl FileDestination {
     }
 
     /// Returns a response with the file, if it exists and is readable.
-    pub fn resp(&self, req: &HttpRequest) -> Result<Vec<u8>, FileDestinationError> {
+    pub fn resp(&self, req: &HttpRequest) -> Result<HttpResponse, FileDestinationError> {
         let path = self.path_for_request(&req);
-        std::fs::read(path).map_err(FileDestinationError::from)
+        let contents = std::fs::read(path).map_err(FileDestinationError::from)?;
+        Ok(HttpResponse {
+            headers: vec![
+                (
+                    http::header::CONTENT_TYPE.to_string(),
+                    self.content_type.clone(),
+                ),
+                (
+                    http::header::CONTENT_LENGTH.to_string(),
+                    contents.len().to_string(),
+                ),
+            ],
+            status: 200,
+            body: contents,
+            request_path: req.path.clone(),
+            request_authority: req.authority.clone(),
+            request_host: req.host.clone(),
+            request_scheme: req.scheme.clone(),
+            request_version: req.version.clone(),
+            request_headers: req.headers.clone(),
+            request_method: req.method.clone(),
+        })
     }
 }
 
@@ -151,14 +172,16 @@ impl RequestRedirect {
         match &self.to {
             RedirectDestination::File(_) => {}
             RedirectDestination::Url(dest) => {
-                let (scheme, authority) = match (dest.url.scheme(), dest.url.authority()) {
-                    (Some(scheme), Some(authority)) => (scheme, authority),
-                    _ => {
-                        return;
-                    }
-                };
+                let (scheme, authority, host) =
+                    match (dest.url.scheme(), dest.url.authority(), dest.url.host()) {
+                        (Some(scheme), Some(authority), Some(host)) => (scheme, authority, host),
+                        _ => {
+                            return;
+                        }
+                    };
                 req.authority = authority.to_string();
                 req.scheme = scheme.to_string();
+                req.host = host.to_string();
                 if !dest.replace_path_and_query {
                     req.path = "".into();
                 }
@@ -171,109 +194,147 @@ fn default_when() -> Vec<RuleMatch> {
     vec![]
 }
 
-// #[cfg(test)]
-// mod test {
-//     use super::*;
-//     use http::Request;
-//     use tempdir::TempDir;
-//     use test_case::test_case;
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tempdir::TempDir;
+    use test_case::test_case;
 
-//     fn test_redirect_to_remote() {
-//         let redirect = RequestRedirect {
-//             when: vec![],
-//             to: RedirectDestination::Url(UrlDestination {
-//                 url: "https://duckduckgo.com"
-//                     .parse()
-//                     .expect("should build the url"),
-//                 replace_path_and_query: true,
-//             }),
-//         };
-//         redirect.redirect_request(&mut request);
-//         let uri = format!("{}", request.request.uri());
-//         assert_eq!(uri, "https://duckduckgo.com/my/path?and=query");
-//     }
+    #[test]
+    fn test_redirect_to_remote() {
+        let mut request = HttpRequest {
+            path: "/my/path?and=query".into(),
+            authority: "foo.com".into(),
+            host: "foo.com".into(),
+            scheme: "https".into(),
+            version: "HTTP/1.1".into(),
+            headers: vec![(
+                http::header::ACCESS_CONTROL_ALLOW_ORIGIN.to_string(),
+                "https://foo.com".to_string(),
+            )],
+            method: "GET".into(),
+            body: vec![],
+        };
+        let redirect = RequestRedirect {
+            when: vec![],
+            to: RedirectDestination::Url(UrlDestination {
+                url: "https://duckduckgo.com"
+                    .parse()
+                    .expect("should build the url"),
+                replace_path_and_query: true,
+            }),
+        };
+        redirect.redirect_request(&mut request);
+        let uri = format!("{}://{}{}", request.scheme, request.host, request.path);
+        assert_eq!(uri, "https://duckduckgo.com/my/path?and=query");
+    }
 
-//     #[test_case(
-//         true,
-//         false,
-//         "/usr/local/www",
-//         Some(".json".to_string()),
-//         "https://google.com/search/api/3",
-//         "/usr/local/www/search/api/3.json"
-//         ; "rewrite relative path"
-//     )]
-//     #[test_case(
-//         true,
-//         true,
-//         "/usr/local/www",
-//         Some(".json".to_string()),
-//         "https://google.com/search/api/",
-//         "/usr/local/www/search/api/index.json"
-//         ; "rewrite index.html"
-//     )]
-//     #[test_case(
-//         false,
-//         false,
-//         "/usr/local/www/file.json",
-//         None,
-//         "https://google.com/search/api/",
-//         "/usr/local/www/file.json"
-//         ; "rewrite without replacing"
-//     )]
-//     fn tests_file_redirect_calculate_path(
-//         replace_path: bool,
-//         root_index: bool,
-//         file_path: &str,
-//         file_suffix: Option<String>,
-//         req_path: &str,
-//         expected_path: &str,
-//     ) {
-//         let dest = FileDestination {
-//             replace_path,
-//             root_index,
-//             path: PathBuf::from(file_path),
-//             file_suffix,
-//             content_type: "application/json".into(),
-//         };
-//         let req = Request::builder()
-//             .uri(req_path)
-//             .body(Body::empty())
-//             .expect("should build the request");
-//         let new_path = dest.path_for_request(&req);
+    #[test_case(
+        true,
+        false,
+        "/usr/local/www",
+        Some(".json".to_string()),
+        "https://google.com/search/api/3",
+        "/usr/local/www/search/api/3.json"
+        ; "rewrite relative path"
+    )]
+    #[test_case(
+        true,
+        true,
+        "/usr/local/www",
+        Some(".json".to_string()),
+        "https://google.com/search/api/",
+        "/usr/local/www/search/api/index.json"
+        ; "rewrite index.html"
+    )]
+    #[test_case(
+        false,
+        false,
+        "/usr/local/www/file.json",
+        None,
+        "https://google.com/search/api/",
+        "/usr/local/www/file.json"
+        ; "rewrite without replacing"
+    )]
+    fn tests_file_redirect_calculate_path(
+        replace_path: bool,
+        root_index: bool,
+        file_path: &str,
+        file_suffix: Option<String>,
+        req_path: &str,
+        expected_path: &str,
+    ) {
+        let dest = FileDestination {
+            replace_path,
+            root_index,
+            path: PathBuf::from(file_path),
+            file_suffix,
+            content_type: "application/json".into(),
+        };
+        let uri: Uri = req_path.parse().expect("should parse the req path");
+        let req = HttpRequest {
+            path: uri
+                .path_and_query()
+                .map(|p| p.to_string())
+                .expect("should unwrap"),
+            authority: uri.authority().unwrap().to_string(),
+            host: uri.host().unwrap().to_string(),
+            scheme: uri.scheme().unwrap().to_string(),
+            version: "HTTP/1.1".into(),
+            headers: vec![(
+                http::header::ACCESS_CONTROL_ALLOW_ORIGIN.to_string(),
+                "https://foo.com".to_string(),
+            )],
+            method: "GET".into(),
+            body: vec![],
+        };
+        let new_path = dest.path_for_request(&req);
 
-//         assert_eq!(new_path.as_os_str(), std::ffi::OsStr::new(expected_path));
-//     }
+        assert_eq!(new_path.as_os_str(), std::ffi::OsStr::new(expected_path));
+    }
 
-//     #[test]
-//     fn redirects_to_file() {
-//         let dir = TempDir::new("redirect").expect("should build a temporary directory");
-//         let file_path = dir.path().join("index.html");
-//         std::fs::write(file_path, "<html><body><h1>hi</h1></body></html>")
-//             .expect("should write file");
+    #[test]
+    fn redirects_to_file() {
+        let dir = TempDir::new("redirect").expect("should build a temporary directory");
+        let file_path = dir.path().join("index.html");
+        std::fs::write(file_path, "<html><body><h1>hi</h1></body></html>")
+            .expect("should write file");
 
-//         let dest = FileDestination {
-//             path: dir.path().to_path_buf(),
-//             replace_path: true,
-//             root_index: true,
-//             file_suffix: Some(".html".into()),
-//             content_type: "text/html; charset=UTF-8".into(),
-//         };
-//         let req = Request::builder()
-//             .uri("https://www.google.com")
-//             .body(Body::empty())
-//             .expect("Should build the request");
+        let dest = FileDestination {
+            path: dir.path().to_path_buf(),
+            replace_path: true,
+            root_index: true,
+            file_suffix: Some(".html".into()),
+            content_type: "text/html; charset=UTF-8".into(),
+        };
+        let req = HttpRequest {
+            path: "/".into(),
+            authority: "foo.com".into(),
+            host: "foo.com".into(),
+            scheme: "https".into(),
+            version: "HTTP/1.1".into(),
+            headers: vec![(
+                http::header::ACCESS_CONTROL_ALLOW_ORIGIN.to_string(),
+                "https://foo.com".to_string(),
+            )],
+            method: "GET".into(),
+            body: vec![],
+        };
 
-//         let resp = dest.resp(&req).expect("should fetch the response");
-//         let (parts, body) = resp.into_parts();
-//         let body_bytes = hyper::body::to_bytes(body).await.expect("should read body");
-//         let resp_str = std::str::from_utf8(&body_bytes).expect("should serialize to string");
-//         assert_eq!(resp_str, "<html><body><h1>hi</h1></body></html>");
-//         let content_type_header = parts
-//             .headers
-//             .get("Content-Type")
-//             .expect("should have the header")
-//             .to_str()
-//             .expect("should have a valid UTF-8 header");
-//         assert_eq!(content_type_header, "text/html; charset=UTF-8")
-//     }
-// }
+        let resp = dest.resp(&req).expect("should fetch the response");
+        let resp_str = std::str::from_utf8(&resp.body).expect("should serialize to string");
+        assert_eq!(resp_str, "<html><body><h1>hi</h1></body></html>");
+        let content_type_header = resp
+            .headers
+            .iter()
+            .find(|(h, _v)| h == http::header::CONTENT_TYPE.as_str())
+            .expect("should have the header");
+        let content_length_header = resp
+            .headers
+            .iter()
+            .find(|(h, _v)| h == http::header::CONTENT_LENGTH.as_str())
+            .expect("should have the header");
+        assert_eq!(content_type_header.1, "text/html; charset=UTF-8");
+        assert_eq!(content_length_header.1, resp.body.len().to_string());
+    }
+}
