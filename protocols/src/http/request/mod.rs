@@ -4,18 +4,17 @@ use anyhow::Result;
 use config::Proxy;
 use http::Uri;
 use hyper::{Body, Request};
-use proxysaur_wit_bindings::http::{request, response};
 use proxysaur_wit_bindings::config::config::add_to_linker;
+use proxysaur_wit_bindings::http::request;
 use wasi_runtime::{Linker, Store, WasiCtx, WasiCtxBuilder, WasiRuntime};
 
 use crate::http::convert_version;
 
-use super::{ProxyHttpError, config::ProxyConfig};
+use super::{config::ProxyConfig, ProxyHttpError};
 
 #[derive(Debug)]
 pub struct ProxyHttpRequest {
     request: request::HttpRequestResult,
-    response: Option<response::HttpResponse>,
 }
 
 impl TryFrom<ProxyHttpRequest> for Request<Body> {
@@ -82,7 +81,7 @@ impl ProxyHttpRequest {
             host,
             body,
         };
-        Ok(Self { request, response: None })
+        Ok(Self { request })
     }
 }
 
@@ -179,20 +178,6 @@ impl request::Request for ProxyHttpRequest {
             headers,
         };
     }
-
-    fn http_response_set(&mut self, response: request::HttpResponse<'_>) {
-        let headers: Vec<(String, String)> = response
-            .headers
-            .iter()
-            .map(|(n, v)| (n.to_string(), v.to_string()))
-            .collect();
-        self.response = Some(request::HttpResponse {
-            headers,
-            status: response.status,
-            body: response.body.into(),
-            request: self.request.clone()
-        });
-    }
 }
 
 struct RequestContext {
@@ -232,7 +217,10 @@ pub async fn process_request(
     let ctx = RequestContext {
         wasi,
         proxy_request,
-        proxy_config: ProxyConfig { proxy, error: "".into() },
+        proxy_config: ProxyConfig {
+            proxy,
+            error: "".into(),
+        },
     };
 
     let mut store: Store<RequestContext> = Store::new(&wasi_runtime.engine, ctx);

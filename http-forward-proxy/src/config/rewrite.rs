@@ -146,7 +146,7 @@ impl Rewrite {
         }
     }
 
-    pub fn rewrite_resp(&self, mut resp: HttpResponse) -> HttpResponse {
+    pub fn rewrite_resp(&self, resp: &mut HttpResponse) {
         match self {
             Rewrite::Status(rewrite) => {
                 let status = resp.status.to_string();
@@ -159,16 +159,13 @@ impl Rewrite {
                         resp.status = new_status;
                     }
                 }
-                resp
             }
             Rewrite::Body(rewrite) => {
                 let replace = rewrite.replace_with.clone();
                 resp.body = replace;
-                resp
             }
             Rewrite::Header(rewrite) => {
                 rewrite.do_rewrite(&mut resp.headers);
-                resp
             }
         }
     }
@@ -222,7 +219,7 @@ impl HeaderRewrite {
         let matching_header = headers
             .iter()
             .enumerate()
-            .filter(|(idx, (name, value))| {
+            .filter(|(_idx, (name, value))| {
                 self.header_match
                     .header_name
                     .matches(name.to_lowercase().as_str())
@@ -389,14 +386,14 @@ impl RequestRewrite {
 
 impl ResponseRewrite {
     /// Exists because typically the hyper client will consume the request
-    pub fn should_rewrite_response<T>(&self, req: &HttpRequest) -> bool {
+    pub fn should_rewrite_response(&self, req: &HttpRequest) -> bool {
         self.when[..]
             .into_iter()
             .all(|when: &RuleMatch| when.matches(req))
     }
 
-    pub fn rewrite(&self, resp: HttpResponse) -> HttpResponse {
-        self.rewrite.rewrite_resp(resp)
+    pub fn rewrite(&self, resp: &mut HttpResponse) {
+        self.rewrite.rewrite_resp(resp);
     }
 }
 

@@ -28,20 +28,6 @@ pub struct InterceptConfig {
     hosts: HashMap<String, HostConfig>,
 }
 
-#[derive(thiserror::Error, Debug)]
-#[error("Error building configuration: {message}")]
-pub struct InterceptConfigError {
-    message: String,
-}
-
-impl InterceptConfigError {
-    fn new(msg: &str, from: &dyn std::error::Error) -> Self {
-        InterceptConfigError {
-            message: format!("{}. Original error: {}", msg, from),
-        }
-    }
-}
-
 impl InterceptConfig {
     /// Fetches the configuration for interception & rewriting associated with the host.
     pub fn host_config(&self, hostname: &str) -> Option<&HostConfig> {
@@ -50,16 +36,6 @@ impl InterceptConfig {
 
     pub fn should_intercept(&self, hostname: &str) -> bool {
         self.hosts.contains_key(hostname)
-    }
-
-    pub fn from_json(s: &str) -> Result<Self, InterceptConfigError> {
-        serde_json::from_str(s)
-            .map_err(|e| InterceptConfigError::new("Error serializing configuration", &e))
-    }
-
-    pub fn from_yaml(s: &str) -> Result<Self, InterceptConfigError> {
-        serde_yaml::from_str(s)
-            .map_err(|e| InterceptConfigError::new("Error serializing configuration", &e))
     }
 }
 
@@ -149,7 +125,7 @@ mod test {
 
     #[test]
     fn test_serialize() {
-        let config = InterceptConfig::from_yaml(&CONFIG).expect("should serialize");
+        let config: InterceptConfig = serde_yaml::from_str(&CONFIG).expect("should serialize");
         let host = config
             .hosts
             .get("test.com".into())

@@ -97,7 +97,6 @@ async fn http_proxy_service(
     let host = proxy.upstream_address();
     let req_path = proxy.request_wasi_module_path.clone();
     let resp_path = proxy.response_wasi_module_path.clone();
-    let uri = req.uri().clone();
     *req.uri_mut() = Uri::builder()
         .scheme(scheme.as_str())
         .authority(host.as_str())
@@ -110,7 +109,7 @@ async fn http_proxy_service(
         req_path,
         scheme.as_str(),
         host.as_str(),
-        proxy.clone()
+        proxy.clone(),
     )
     .await
     {
@@ -134,6 +133,9 @@ async fn http_proxy_service(
             }
         },
     };
+
+    let method = request.method().clone();
+    let uri = request.uri().clone();
 
     let resp = match version {
         Version::HTTP_09 | Version::HTTP_10 | Version::HTTP_11 => context
@@ -160,7 +162,17 @@ async fn http_proxy_service(
         }
     };
 
-    match process_response(&mut wasi_runtime, resp, resp_path, proxy, uri).await {
+    match process_response(
+        &mut wasi_runtime,
+        resp,
+        resp_path,
+        proxy,
+        uri,
+        version,
+        method,
+    )
+    .await
+    {
         Ok(resp) => {
             tracing::info!(new_response = ?resp, "New response.");
             Ok(resp)
@@ -397,11 +409,32 @@ mod test {
         );
         let mut wasi_runtime = WasiRuntime::new().expect("should build the runtime");
         let proxy = Proxy::new();
-        let uri = Uri::builder().build().expect("to build the damn URI");
-        let new_response: Response<Body> =
-            process_response(&mut wasi_runtime, response, Some(wasi_path), proxy, uri)
-                .await
-                .expect("should process the response");
+        let uri = Uri::builder()
+            .scheme("https")
+            .authority("jaksf.com")
+            .path_and_query("/")
+            .build()
+            .expect("");
+        let req = hyper::Request::builder()
+            .uri(uri)
+            .method("HEAD")
+            .body(Body::from(""))
+            .expect("");
+        let uri = req.uri().clone();
+        let version = req.version().clone();
+        let method = req.method().clone();
+
+        let new_response: Response<Body> = process_response(
+            &mut wasi_runtime,
+            response,
+            Some(wasi_path),
+            proxy,
+            uri,
+            version,
+            method,
+        )
+        .await
+        .expect("should process the response");
 
         let (parts, body) = new_response.into_parts();
         assert_eq!(parts.status, 500);

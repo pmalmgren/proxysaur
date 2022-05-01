@@ -3,7 +3,7 @@ use proxysaur_wit_bindings::config::config::Config;
 
 pub(crate) struct ProxyConfig {
     pub(crate) proxy: Proxy,
-    pub(crate) error: String
+    pub(crate) error: String,
 }
 
 impl Config for ProxyConfig {
@@ -16,5 +16,6 @@ impl Config for ProxyConfig {
 
     fn set_invalid_data(&mut self, error: &str) {
         self.error = error.to_string();
+        tracing::error!(?error, "Error");
     }
 }

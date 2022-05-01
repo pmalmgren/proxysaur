@@ -10,7 +10,7 @@ fn main() {
             let msg = err.to_string();
             proxysaur_config::set_invalid_data(&msg);
             return;
-        },
+        }
     };
 
     let host = proxysaur_bindings::http::pre_request::http_request_get();

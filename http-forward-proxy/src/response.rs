@@ -2,7 +2,10 @@ mod config;
 
 use config::intercept::InterceptConfig;
 use config::rewrite::ResponseRewrite;
-use proxysaur_bindings::{config as proxysaur_config, http};
+use proxysaur_bindings::{
+    config as proxysaur_config,
+    http::{self, request::HttpRequestResult},
+};
 
 fn main() {
     let config_data: Vec<u8> = proxysaur_config::get_config_data();
@@ -15,7 +18,7 @@ fn main() {
         }
     };
 
-    let response = http::response::http_response_get().expect("should get the response");
+    let mut response = http::response::http_response_get().expect("should get the response");
 
     let host_config = match config.host_config(response.request_host.as_str()) {
         Some(config) => config,
@@ -25,15 +28,33 @@ fn main() {
         }
     };
 
+    let request = HttpRequestResult {
+        path: response.request_path.clone(),
+        authority: response.request_authority.clone(),
+        host: response.request_host.clone(),
+        scheme: response.request_scheme.clone(),
+        version: response.request_version.clone(),
+        method: response.request_method.clone(),
+        body: vec![],
+        headers: response.request_headers.clone(),
+    };
+
     let response_rewrites = &host_config.response_rewrites;
     let resp_rewrites: Vec<&ResponseRewrite> = response_rewrites
         .into_iter()
         .filter_map(|rewrite| {
-            if rewrite.should_rewrite_response(&response.request) {
+            if rewrite.should_rewrite_response(&request) {
                 Some(rewrite)
             } else {
                 None
             }
         })
         .collect();
+
+    for rewrite in resp_rewrites.iter() {
+        rewrite.rewrite(&mut response);
+    }
+
+    let _res = http::response::http_response_set_body(&response.body);
+    let _res = http::response::http_response_set_status(response.status);
 }
