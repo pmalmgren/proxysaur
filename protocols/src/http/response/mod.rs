@@ -84,39 +84,15 @@ impl response::Response for ProxyHttpResponse {
         Ok(())
     }
 
-    fn http_response_set_header(
+    fn http_response_set_headers(
         &mut self,
-        header: &str,
-        value: &str,
+        headers: response::HttpHeadersParam<'_>,
     ) -> Result<(), response::Error> {
-        match self
-            .response
-            .headers
+        let headers: Vec<(String, String)> = headers
             .iter()
-            .enumerate()
-            .find(|(_idx, (name, _value))| name == header)
-        {
-            Some((idx, _)) => {
-                self.response.headers[idx].1 = value.to_string();
-            }
-            None => self
-                .response
-                .headers
-                .push((header.to_string(), value.to_string())),
-        };
-        Ok(())
-    }
-
-    fn http_response_rm_header(&mut self, header: &str) -> Result<(), response::Error> {
-        if let Some((idx, _)) = self
-            .response
-            .headers
-            .iter()
-            .enumerate()
-            .find(|(_idx, (name, _value))| name == header)
-        {
-            self.response.headers.remove(idx);
-        }
+            .map(|(h, v)| (h.to_string(), v.to_string()))
+            .collect();
+        self.response.headers = headers;
         Ok(())
     }
 }

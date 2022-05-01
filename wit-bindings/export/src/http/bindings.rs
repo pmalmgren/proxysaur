@@ -664,7 +664,6 @@ pub mod request {
         )?;
         Ok(())
     }
-    #[allow(unused)]
     use wit_bindgen_wasmtime::rt::invalid_variant;
     use wit_bindgen_wasmtime::rt::RawMem;
 }
@@ -674,11 +673,12 @@ pub mod response {
     pub type BodyParam<'a> = &'a [u8];
     pub type BodyResult = Vec<u8>;
     pub type Error = String;
-    pub type HttpHeaders = Vec<(String, String)>;
+    pub type HttpHeadersParam<'a> = Vec<(&'a str, &'a str)>;
+    pub type HttpHeadersResult = Vec<(String, String)>;
     pub type HttpMethod = String;
     #[derive(Clone)]
     pub struct HttpResponse {
-        pub headers: HttpHeaders,
+        pub headers: HttpHeadersResult,
         pub status: u16,
         pub body: BodyResult,
         pub request_path: String,
@@ -686,7 +686,7 @@ pub mod response {
         pub request_host: String,
         pub request_scheme: String,
         pub request_version: String,
-        pub request_headers: HttpHeaders,
+        pub request_headers: HttpHeadersResult,
         pub request_method: HttpMethod,
     }
     impl std::fmt::Debug for HttpResponse {
@@ -712,9 +712,8 @@ pub mod response {
 
         fn http_response_set_body(&mut self, body: BodyParam<'_>) -> Result<(), Error>;
 
-        fn http_response_set_header(&mut self, header: &str, value: &str) -> Result<(), Error>;
-
-        fn http_response_rm_header(&mut self, header: &str) -> Result<(), Error>;
+        fn http_response_set_headers(&mut self, headers: HttpHeadersParam<'_>)
+            -> Result<(), Error>;
     }
 
     pub fn add_to_linker<T, U>(
@@ -1011,48 +1010,7 @@ pub mod response {
         )?;
         linker.func_wrap(
             "response",
-            "http-response-set-header",
-            move |mut caller: wasmtime::Caller<'_, T>,
-                  arg0: i32,
-                  arg1: i32,
-                  arg2: i32,
-                  arg3: i32,
-                  arg4: i32| {
-                let func = get_func(&mut caller, "canonical_abi_realloc")?;
-                let func_canonical_abi_realloc =
-                    func.typed::<(i32, i32, i32, i32), i32, _>(&caller)?;
-                let memory = &get_memory(&mut caller, "memory")?;
-                let (mem, data) = memory.data_and_store_mut(&mut caller);
-                let mut _bc = wit_bindgen_wasmtime::BorrowChecker::new(mem);
-                let host = get(data);
-                let ptr0 = arg0;
-                let len0 = arg1;
-                let ptr1 = arg2;
-                let len1 = arg3;
-                let param0 = _bc.slice_str(ptr0, len0)?;
-                let param1 = _bc.slice_str(ptr1, len1)?;
-                let result2 = host.http_response_set_header(param0, param1);
-                let (result4_0, result4_1, result4_2) = match result2 {
-                    Ok(()) => (0i32, 0i32, 0i32),
-                    Err(e) => {
-                        let vec3 = e;
-                        let ptr3 = func_canonical_abi_realloc
-                            .call(&mut caller, (0, 0, 1, (vec3.len() as i32) * 1))?;
-                        let caller_memory = memory.data_mut(&mut caller);
-                        caller_memory.store_many(ptr3, vec3.as_ref())?;
-                        (1i32, ptr3, vec3.len() as i32)
-                    }
-                };
-                let caller_memory = memory.data_mut(&mut caller);
-                caller_memory.store(arg4 + 16, wit_bindgen_wasmtime::rt::as_i32(result4_2))?;
-                caller_memory.store(arg4 + 8, wit_bindgen_wasmtime::rt::as_i32(result4_1))?;
-                caller_memory.store(arg4 + 0, wit_bindgen_wasmtime::rt::as_i32(result4_0))?;
-                Ok(())
-            },
-        )?;
-        linker.func_wrap(
-            "response",
-            "http-response-rm-header",
+            "http-response-set-headers",
             move |mut caller: wasmtime::Caller<'_, T>, arg0: i32, arg1: i32, arg2: i32| {
                 let func = get_func(&mut caller, "canonical_abi_realloc")?;
                 let func_canonical_abi_realloc =
@@ -1061,25 +1019,40 @@ pub mod response {
                 let (mem, data) = memory.data_and_store_mut(&mut caller);
                 let mut _bc = wit_bindgen_wasmtime::BorrowChecker::new(mem);
                 let host = get(data);
-                let ptr0 = arg0;
-                let len0 = arg1;
-                let param0 = _bc.slice_str(ptr0, len0)?;
-                let result1 = host.http_response_rm_header(param0);
-                let (result3_0, result3_1, result3_2) = match result1 {
+                let len6 = arg1;
+                let base6 = arg0;
+                let mut result6 = Vec::with_capacity(len6 as usize);
+                for i in 0..len6 {
+                    let base = base6 + i * 16;
+                    result6.push({
+                        let load0 = _bc.load::<i32>(base + 0)?;
+                        let load1 = _bc.load::<i32>(base + 4)?;
+                        let ptr2 = load0;
+                        let len2 = load1;
+                        let load3 = _bc.load::<i32>(base + 8)?;
+                        let load4 = _bc.load::<i32>(base + 12)?;
+                        let ptr5 = load3;
+                        let len5 = load4;
+                        (_bc.slice_str(ptr2, len2)?, _bc.slice_str(ptr5, len5)?)
+                    });
+                }
+                let param0 = result6;
+                let result7 = host.http_response_set_headers(param0);
+                let (result9_0, result9_1, result9_2) = match result7 {
                     Ok(()) => (0i32, 0i32, 0i32),
                     Err(e) => {
-                        let vec2 = e;
-                        let ptr2 = func_canonical_abi_realloc
-                            .call(&mut caller, (0, 0, 1, (vec2.len() as i32) * 1))?;
+                        let vec8 = e;
+                        let ptr8 = func_canonical_abi_realloc
+                            .call(&mut caller, (0, 0, 1, (vec8.len() as i32) * 1))?;
                         let caller_memory = memory.data_mut(&mut caller);
-                        caller_memory.store_many(ptr2, vec2.as_ref())?;
-                        (1i32, ptr2, vec2.len() as i32)
+                        caller_memory.store_many(ptr8, vec8.as_ref())?;
+                        (1i32, ptr8, vec8.len() as i32)
                     }
                 };
                 let caller_memory = memory.data_mut(&mut caller);
-                caller_memory.store(arg2 + 16, wit_bindgen_wasmtime::rt::as_i32(result3_2))?;
-                caller_memory.store(arg2 + 8, wit_bindgen_wasmtime::rt::as_i32(result3_1))?;
-                caller_memory.store(arg2 + 0, wit_bindgen_wasmtime::rt::as_i32(result3_0))?;
+                caller_memory.store(arg2 + 16, wit_bindgen_wasmtime::rt::as_i32(result9_2))?;
+                caller_memory.store(arg2 + 8, wit_bindgen_wasmtime::rt::as_i32(result9_1))?;
+                caller_memory.store(arg2 + 0, wit_bindgen_wasmtime::rt::as_i32(result9_0))?;
                 Ok(())
             },
         )?;
@@ -1087,7 +1060,6 @@ pub mod response {
     }
     use core::convert::TryFrom;
     use wit_bindgen_wasmtime::rt::bad_int;
-    #[allow(unused)]
     use wit_bindgen_wasmtime::rt::invalid_variant;
     use wit_bindgen_wasmtime::rt::RawMem;
 }

@@ -48,7 +48,13 @@ fn main() {
     for rewrite in resp_rewrites.iter() {
         rewrite.rewrite(&mut response);
     }
+    let headers: Vec<(&str, &str)> = response
+        .headers
+        .iter()
+        .map(|(h, v)| (h.as_str(), v.as_str()))
+        .collect();
 
     let _res = http::response::http_response_set_body(&response.body);
     let _res = http::response::http_response_set_status(response.status);
+    let _res = http::response::http_response_set_headers(headers.as_slice());
 }
