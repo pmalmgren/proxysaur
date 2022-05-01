@@ -1,6 +1,7 @@
 use std::{path::PathBuf, str::FromStr};
 
 use anyhow::Result;
+use bytes::Bytes;
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
@@ -60,6 +61,10 @@ impl FromStr for Protocol {
     }
 }
 
+fn default_config() -> Option<Bytes> {
+    None
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Builder)]
 pub struct Proxy {
     #[serde(default)]
@@ -68,6 +73,10 @@ pub struct Proxy {
     pub request_wasi_module_path: Option<PathBuf>,
     #[serde(default)]
     pub response_wasi_module_path: Option<PathBuf>,
+    #[serde(default)]
+    pub proxy_configuration_path: Option<PathBuf>,
+    #[serde(skip, default = "default_config")]
+    pub wasi_configuration_bytes: Option<Bytes>,
     pub port: u16,
     pub protocol: Protocol,
     pub tls: bool,
@@ -77,7 +86,29 @@ pub struct Proxy {
     pub upstream_port: u16,
 }
 
+impl Default for Proxy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Proxy {
+    pub fn new() -> Self {
+        Self {
+            pre_request_wasi_module_path: None,
+            request_wasi_module_path: None,
+            response_wasi_module_path: None,
+            proxy_configuration_path: None,
+            wasi_configuration_bytes: None,
+            port: 8080,
+            protocol: Protocol::Http,
+            tls: false,
+            address: "blah".into(),
+            upstream_address: "blah".into(),
+            upstream_port: 8080,
+        }
+    }
+
     pub fn address(&self) -> String {
         let mut addr = self.address.clone();
         addr.push(':');
@@ -127,7 +158,16 @@ impl TryFrom<Args> for Config {
             })
         })?;
         let contents = std::fs::read(path)?;
-        toml::from_slice(&contents).map_err(anyhow::Error::from)
+        let mut config: Config = toml::from_slice(&contents).map_err(anyhow::Error::from)?;
+
+        for mut proxy in config.proxy.iter_mut() {
+            if let Some(config_path) = proxy.proxy_configuration_path.as_ref() {
+                let contents = std::fs::read(config_path)?;
+                proxy.wasi_configuration_bytes = Some(Bytes::from(contents));
+            }
+        }
+
+        Ok(config)
     }
 }
 

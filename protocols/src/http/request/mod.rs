@@ -1,18 +1,20 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
+use config::Proxy;
 use http::Uri;
 use hyper::{Body, Request};
+use proxysaur_wit_bindings::config::config::add_to_linker;
 use proxysaur_wit_bindings::http::request;
 use wasi_runtime::{Linker, Store, WasiCtx, WasiCtxBuilder, WasiRuntime};
 
 use crate::http::convert_version;
 
-use super::ProxyHttpError;
+use super::{config::ProxyConfig, ProxyHttpError};
 
 #[derive(Debug)]
 pub struct ProxyHttpRequest {
-    request: request::HttpRequest,
+    request: request::HttpRequestResult,
 }
 
 impl TryFrom<ProxyHttpRequest> for Request<Body> {
@@ -69,7 +71,7 @@ impl ProxyHttpRequest {
             })
             .collect();
         let body = hyper::body::to_bytes(body).await?.to_vec();
-        let request = request::HttpRequest {
+        let request = request::HttpRequestResult {
             path,
             authority,
             scheme,
@@ -84,7 +86,7 @@ impl ProxyHttpRequest {
 }
 
 impl request::Request for ProxyHttpRequest {
-    fn http_request_get(&mut self) -> Result<request::HttpRequest, request::Error> {
+    fn http_request_get(&mut self) -> Result<request::HttpRequestResult, request::Error> {
         Ok(self.request.clone())
     }
 
@@ -138,6 +140,14 @@ impl request::Request for ProxyHttpRequest {
         Ok(())
     }
 
+    fn http_request_set_body(
+        &mut self,
+        body: request::BodyParam<'_>,
+    ) -> Result<(), request::Error> {
+        self.request.body = body.to_vec();
+        Ok(())
+    }
+
     fn http_request_rm_header(&mut self, header: &str) -> Result<(), request::Error> {
         if let Some((idx, _)) = self
             .request
@@ -151,18 +161,29 @@ impl request::Request for ProxyHttpRequest {
         Ok(())
     }
 
-    fn http_request_set_body(
-        &mut self,
-        body: request::BodyParam<'_>,
-    ) -> Result<(), request::Error> {
-        self.request.body = body.to_vec();
-        Ok(())
+    fn http_request_set(&mut self, request: request::HttpRequestParam<'_>) {
+        let headers: Vec<(String, String)> = request
+            .headers
+            .iter()
+            .map(|(n, v)| (n.to_string(), v.to_string()))
+            .collect();
+        self.request = request::HttpRequestResult {
+            path: request.path.into(),
+            authority: request.authority.into(),
+            host: request.host.into(),
+            scheme: request.scheme.into(),
+            version: request.version.into(),
+            method: request.method.into(),
+            body: request.body.into(),
+            headers,
+        };
     }
 }
 
 struct RequestContext {
     wasi: WasiCtx,
     proxy_request: ProxyHttpRequest,
+    proxy_config: ProxyConfig,
 }
 
 pub async fn process_request(
@@ -171,6 +192,7 @@ pub async fn process_request(
     wasi_module_path: Option<PathBuf>,
     scheme: &str,
     host: &str,
+    proxy: Proxy,
 ) -> Result<Request<Body>> {
     let wasi_module_path = match wasi_module_path {
         Some(wasi_module_path) => wasi_module_path,
@@ -195,6 +217,10 @@ pub async fn process_request(
     let ctx = RequestContext {
         wasi,
         proxy_request,
+        proxy_config: ProxyConfig {
+            proxy,
+            error: "".into(),
+        },
     };
 
     let mut store: Store<RequestContext> = Store::new(&wasi_runtime.engine, ctx);
@@ -203,6 +229,9 @@ pub async fn process_request(
 
     request::add_to_linker(&mut linker, |ctx| -> &mut ProxyHttpRequest {
         &mut ctx.proxy_request
+    })?;
+    add_to_linker(&mut linker, |ctx| -> &mut ProxyConfig {
+        &mut ctx.proxy_config
     })?;
     tracing::trace!("Linked module with WIT.");
 

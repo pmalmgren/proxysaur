@@ -1,0 +1,23 @@
+hosts:
+  google.com:
+    scheme: https
+    redirect:
+        to:
+          url:
+            url: https://petermalmgren.com/about/
+            replace_path_and_query: false
+        when:
+          - path:
+              exact: /about/
+    response_rewrites:
+      - when:
+          - path:
+              exact: /
+        rewrite:
+          replace_with: |
+            <!DOCTYPE html>
+            <html>
+              <body>
+                <h1>Proxysaur has eaten your website.</h1>
+              </body>
+            </html>

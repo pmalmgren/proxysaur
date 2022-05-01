@@ -6,7 +6,14 @@ type http-method = string
 record http-response {
     headers: http-headers,
     status: u16,
-    body: body
+    body: body,
+    request-path: string,
+    request-authority: string,
+    request-host: string,
+    request-scheme: string,
+    request-version: string,
+    request-headers: http-headers,
+    request-method: http-method,
 }
 
 record http-request {

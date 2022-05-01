@@ -1,0 +1,4 @@
+type config-data = list<u8>
+
+get-config-data: function() -> list<u8>
+set-invalid-data: function(error: string)

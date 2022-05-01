@@ -1,11 +1,14 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
+use config::Proxy;
+use http::{Method, Uri, Version};
 use hyper::{Body, Response};
+use proxysaur_wit_bindings::config::config::add_to_linker;
 use proxysaur_wit_bindings::http::response;
 use wasi_runtime::{Linker, Store, WasiCtx, WasiCtxBuilder, WasiRuntime};
 
-use super::ProxyHttpError;
+use super::{config::ProxyConfig, ProxyHttpError};
 
 pub struct ProxyHttpResponse {
     response: response::HttpResponse,
@@ -23,7 +26,12 @@ impl TryFrom<ProxyHttpResponse> for Response<Body> {
 }
 
 impl ProxyHttpResponse {
-    pub async fn new(response: Response<Body>) -> Result<Self, ProxyHttpError> {
+    pub async fn new(
+        response: Response<Body>,
+        uri: Uri,
+        version: Version,
+        method: Method,
+    ) -> Result<Self, ProxyHttpError> {
         let (parts, body) = response.into_parts();
         let headers = parts
             .headers
@@ -38,6 +46,20 @@ impl ProxyHttpResponse {
             headers,
             status: parts.status.as_u16(),
             body,
+            request_path: uri
+                .path_and_query()
+                .map(|pq| pq.to_string())
+                .unwrap_or_else(|| "".to_string()),
+            request_authority: uri
+                .authority()
+                .map(|authority| authority.as_str())
+                .unwrap_or_else(|| "")
+                .to_string(),
+            request_host: uri.host().unwrap_or("https").to_string(),
+            request_scheme: uri.scheme_str().unwrap_or("https").to_string(),
+            request_version: format!("{:?}", version),
+            request_headers: vec![],
+            request_method: method.to_string(),
         };
 
         Ok(Self { response })
@@ -62,51 +84,32 @@ impl response::Response for ProxyHttpResponse {
         Ok(())
     }
 
-    fn http_response_set_header(
+    fn http_response_set_headers(
         &mut self,
-        header: &str,
-        value: &str,
+        headers: response::HttpHeadersParam<'_>,
     ) -> Result<(), response::Error> {
-        match self
-            .response
-            .headers
+        let headers: Vec<(String, String)> = headers
             .iter()
-            .enumerate()
-            .find(|(_idx, (name, _value))| name == header)
-        {
-            Some((idx, _)) => {
-                self.response.headers[idx].1 = value.to_string();
-            }
-            None => self
-                .response
-                .headers
-                .push((header.to_string(), value.to_string())),
-        };
-        Ok(())
-    }
-
-    fn http_response_rm_header(&mut self, header: &str) -> Result<(), response::Error> {
-        if let Some((idx, _)) = self
-            .response
-            .headers
-            .iter()
-            .enumerate()
-            .find(|(_idx, (name, _value))| name == header)
-        {
-            self.response.headers.remove(idx);
-        }
+            .map(|(h, v)| (h.to_string(), v.to_string()))
+            .collect();
+        self.response.headers = headers;
         Ok(())
     }
 }
 struct ResponseContext {
     wasi: WasiCtx,
     proxy_response: ProxyHttpResponse,
+    config: ProxyConfig,
 }
 
 pub async fn process_response(
     wasi_runtime: &mut WasiRuntime,
     resp: Response<Body>,
     wasi_module_path: Option<PathBuf>,
+    proxy: Proxy,
+    uri: Uri,
+    version: Version,
+    method: Method,
 ) -> Result<Response<Body>> {
     let wasi_module_path = match wasi_module_path {
         Some(path) => path,
@@ -114,7 +117,7 @@ pub async fn process_response(
             return Ok(resp);
         }
     };
-    let proxy_response = ProxyHttpResponse::new(resp).await?;
+    let proxy_response = ProxyHttpResponse::new(resp, uri, version, method).await?;
     let module = wasi_runtime
         .fetch_module(wasi_module_path.as_path())
         .await?;
@@ -127,6 +130,10 @@ pub async fn process_response(
     let ctx = ResponseContext {
         wasi,
         proxy_response,
+        config: ProxyConfig {
+            proxy,
+            error: "".into(),
+        },
     };
 
     let mut store: Store<ResponseContext> = Store::new(&wasi_runtime.engine, ctx);
@@ -135,6 +142,8 @@ pub async fn process_response(
     response::add_to_linker(&mut linker, |ctx| -> &mut ProxyHttpResponse {
         &mut ctx.proxy_response
     })?;
+
+    add_to_linker(&mut linker, |ctx| -> &mut ProxyConfig { &mut ctx.config })?;
 
     linker.module(&mut store, "", &module)?;
     linker

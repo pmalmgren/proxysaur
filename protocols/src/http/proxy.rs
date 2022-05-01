@@ -1,4 +1,4 @@
-use std::{convert::Infallible, path::PathBuf, sync::Arc};
+use std::{convert::Infallible, path::Path, sync::Arc};
 
 use anyhow::Result;
 use ca::CertificateAuthority;
@@ -30,7 +30,7 @@ pub struct HttpContext {
 }
 
 impl HttpContext {
-    pub async fn new(ca_path: PathBuf) -> Result<HttpContext> {
+    pub async fn new(ca_path: &Path) -> Result<HttpContext> {
         let alpn = AlpnConnector::new();
         let client_h2 = hyper::Client::builder()
             .http2_only(true)
@@ -109,6 +109,7 @@ async fn http_proxy_service(
         req_path,
         scheme.as_str(),
         host.as_str(),
+        proxy.clone(),
     )
     .await
     {
@@ -132,6 +133,9 @@ async fn http_proxy_service(
             }
         },
     };
+
+    let method = request.method().clone();
+    let uri = request.uri().clone();
 
     let resp = match version {
         Version::HTTP_09 | Version::HTTP_10 | Version::HTTP_11 => context
@@ -158,7 +162,17 @@ async fn http_proxy_service(
         }
     };
 
-    match process_response(&mut wasi_runtime, resp, resp_path).await {
+    match process_response(
+        &mut wasi_runtime,
+        resp,
+        resp_path,
+        proxy,
+        uri,
+        version,
+        method,
+    )
+    .await
+    {
         Ok(resp) => {
             tracing::info!(new_response = ?resp, "New response.");
             Ok(resp)
@@ -236,7 +250,11 @@ async fn proxy_https(
         match hyper::upgrade::on(req).await {
             Ok(upgraded) => {
                 let path = proxy.pre_request_wasi_module_path.clone();
-                match process_pre_request(&mut wasi_runtime, hostname.clone(), path)
+                let mut proxy = proxy.clone();
+                proxy.upstream_address = hostname.host.clone();
+                proxy.upstream_port = hostname.port;
+                proxy.tls = false;
+                match process_pre_request(&mut wasi_runtime, hostname.clone(), path, proxy.clone())
                     .await
                     .unwrap_or(ProxyMode::Pass)
                 {
@@ -269,7 +287,7 @@ async fn proxy_http(
     proxy.upstream_address = hostname.host.clone();
     proxy.upstream_port = hostname.port;
     proxy.tls = false;
-    match process_pre_request(&mut wasi_runtime, hostname.clone(), path)
+    match process_pre_request(&mut wasi_runtime, hostname.clone(), path, proxy.clone())
         .await
         .unwrap_or(ProxyMode::Pass)
     {
@@ -340,10 +358,13 @@ pub async fn http_forward(
 
 #[cfg(test)]
 mod test {
+    use std::path::PathBuf;
+
     use crate::http::proxy::process_response;
 
     use super::{process_request, WasiRuntime};
-    use http::Response;
+    use config::Proxy;
+    use http::{Response, Uri};
     use hyper::{Body, Request};
 
     #[tokio::test]
@@ -356,13 +377,15 @@ mod test {
         let mut wasi_path = std::env::current_dir().expect("should get the current directory");
         wasi_path
             .push("../wit-bindings/tests/http-request/target/wasm32-wasi/debug/http-request.wasm");
-        let mut wasi_runtime = WasiRuntime::new().expect("should build the runtime");
+        let mut wasi_runtime =
+            WasiRuntime::new(PathBuf::from("/")).expect("should build the runtime");
         let new_request = process_request(
             &mut wasi_runtime,
             request,
             Some(wasi_path),
             "http",
             "localhost",
+            Proxy::new(),
         )
         .await
         .expect("should process the request");
@@ -387,11 +410,35 @@ mod test {
         wasi_path.push(
             "../wit-bindings/tests/http-response/target/wasm32-wasi/debug/http-response.wasm",
         );
-        let mut wasi_runtime = WasiRuntime::new().expect("should build the runtime");
-        let new_response: Response<Body> =
-            process_response(&mut wasi_runtime, response, Some(wasi_path))
-                .await
-                .expect("should process the response");
+        let mut wasi_runtime =
+            WasiRuntime::new(PathBuf::from("/")).expect("should build the runtime");
+        let proxy = Proxy::new();
+        let uri = Uri::builder()
+            .scheme("https")
+            .authority("jaksf.com")
+            .path_and_query("/")
+            .build()
+            .expect("");
+        let req = hyper::Request::builder()
+            .uri(uri)
+            .method("HEAD")
+            .body(Body::from(""))
+            .expect("");
+        let uri = req.uri().clone();
+        let version = req.version();
+        let method = req.method().clone();
+
+        let new_response: Response<Body> = process_response(
+            &mut wasi_runtime,
+            response,
+            Some(wasi_path),
+            proxy,
+            uri,
+            version,
+            method,
+        )
+        .await
+        .expect("should process the response");
 
         let (parts, body) = new_response.into_parts();
         assert_eq!(parts.status, 500);

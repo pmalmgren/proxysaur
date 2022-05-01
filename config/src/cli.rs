@@ -93,6 +93,16 @@ fn get_proxy() -> Result<Proxy> {
     } else {
         None
     };
+    let proxy_configuration_path = if !use_custom_wasi && protocol == Protocol::HttpForward {
+        let output: String = try_input("Enter proxy configuration path: ");
+        if output.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(output))
+        }
+    } else {
+        None
+    };
 
     builder
         .address(address)
@@ -104,6 +114,8 @@ fn get_proxy() -> Result<Proxy> {
         .pre_request_wasi_module_path(pre_request_wasi_module_path)
         .request_wasi_module_path(request_wasi_module_path)
         .response_wasi_module_path(response_wasi_module_path)
+        .proxy_configuration_path(proxy_configuration_path)
+        .wasi_configuration_bytes(None)
         .build()
         .map_err(anyhow::Error::from)
 }

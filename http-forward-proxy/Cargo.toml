@@ -1,0 +1,31 @@
+[package]
+name = "http-forward-proxy"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "request"
+path = "src/request.rs"
+
+[[bin]]
+name = "response"
+path = "src/response.rs"
+
+[[bin]]
+name = "pre-request"
+path = "src/pre_request.rs"
+
+[dependencies]
+proxysaur-bindings = { path = "../wit-bindings/import" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.8"
+thiserror = "1.0"
+regex = "1.5.4"
+http = "0.2.5"
+
+[dev-dependencies]
+test-case = "1.2.1"
+tempdir = "0.3.7"

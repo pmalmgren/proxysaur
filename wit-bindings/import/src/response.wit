@@ -3,5 +3,4 @@ use * from types
 http-response-get: function() -> expected<http-response, error>
 http-response-set-status: function(status: u16) -> expected<_, error>
 http-response-set-body: function(body: body) -> expected<_, error>
-http-response-set-header: function(header: string, value: string) -> expected<_, error>
-http-response-rm-header: function(header: string) -> expected<_, error>
+http-response-set-headers: function(headers: http-headers) -> expected<_, error>

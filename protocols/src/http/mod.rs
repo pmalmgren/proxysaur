@@ -1,6 +1,7 @@
 use http::Version;
 use thiserror::Error;
 
+mod config;
 mod hostname;
 mod pre_request;
 mod request;
