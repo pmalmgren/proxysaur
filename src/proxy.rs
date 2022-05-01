@@ -7,12 +7,58 @@ use wasi_runtime::WasiRuntime;
 
 use config::{Config, Protocol, Proxy};
 
-pub async fn run(config: Config) -> Result<()> {
+async fn add_default_http_proxy(proxy: &mut Proxy) -> Result<()> {
+    let use_default = proxy.pre_request_wasi_module_path.is_none()
+        && proxy.request_wasi_module_path.is_none()
+        && proxy.response_wasi_module_path.is_none()
+        && proxy.proxy_configuration_path.is_some();
+    if !use_default {
+        return Ok(());
+    }
+
+    let project_dirs = directories::ProjectDirs::from("com", "proxysaur", "proxysaur")
+        .ok_or_else(|| anyhow::Error::msg("Could not build project dirs"))?;
+    let cache_dir = project_dirs.cache_dir();
+
+    let request_wasm_bytes =
+        include_bytes!("../http-forward-proxy/target/wasm32-wasi/release/request.wasm");
+    let pre_request_wasm_bytes =
+        include_bytes!("../http-forward-proxy/target/wasm32-wasi/release/pre-request.wasm");
+    let response_wasm_bytes =
+        include_bytes!("../http-forward-proxy/target/wasm32-wasi/release/response.wasm");
+
+    let pre_request_path = cache_dir.join("pre_request.wasm");
+    let request_path = cache_dir.join("request.wasm");
+    let response_path = cache_dir.join("response.wasm");
+
+    tokio::fs::write(&pre_request_path, pre_request_wasm_bytes).await?;
+    tokio::fs::write(&request_path, request_wasm_bytes).await?;
+    tokio::fs::write(&response_path, response_wasm_bytes).await?;
+
+    proxy.request_wasi_module_path = Some(request_path);
+    proxy.pre_request_wasi_module_path = Some(pre_request_path);
+    proxy.response_wasi_module_path = Some(response_path);
+
+    Ok(())
+}
+
+async fn add_defaults(config: &mut Config) -> Result<()> {
+    for proxy in config.proxy.iter_mut() {
+        if proxy.protocol == Protocol::HttpForward {
+            add_default_http_proxy(proxy).await?;
+        }
+    }
+    Ok(())
+}
+
+pub async fn run(mut config: Config) -> Result<()> {
     let ca_path = match config.ca_path {
-        Some(ca_path) => ca_path,
+        Some(ref ca_path) => ca_path.to_path_buf(),
         // the default CA dir uses XDG directories
         None => ca::default_ca_dir()?,
     };
+    add_defaults(&mut config).await?;
+    println!("New config = {:?}", config);
     let futures = config
         .proxy
         .into_iter()
@@ -20,7 +66,7 @@ pub async fn run(config: Config) -> Result<()> {
 
     let listeners = try_join_all(futures).await?;
 
-    let http_context = HttpContext::new(ca_path).await?;
+    let http_context = HttpContext::new(ca_path.as_path()).await?;
     let wasi_runtime = WasiRuntime::new()?;
 
     let _handle = join_all(

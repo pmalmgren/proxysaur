@@ -1411,6 +1411,7 @@ dependencies = [
  "anyhow",
  "ca",
  "config",
+ "directories",
  "futures",
  "protocols",
  "tokio",

@@ -1,4 +1,4 @@
-use std::{convert::Infallible, path::PathBuf, sync::Arc};
+use std::{convert::Infallible, path::Path, sync::Arc};
 
 use anyhow::Result;
 use ca::CertificateAuthority;
@@ -30,7 +30,7 @@ pub struct HttpContext {
 }
 
 impl HttpContext {
-    pub async fn new(ca_path: PathBuf) -> Result<HttpContext> {
+    pub async fn new(ca_path: &Path) -> Result<HttpContext> {
         let alpn = AlpnConnector::new();
         let client_h2 = hyper::Client::builder()
             .http2_only(true)

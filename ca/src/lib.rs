@@ -113,11 +113,11 @@ pub async fn valid_ca_directory(ca_path: &Path) -> bool {
 
 impl CertificateAuthority {
     /// Loads the `generatecert.sh` script which dynamically generates certificate requests.
-    pub async fn load(ca_path: PathBuf) -> Result<Self> {
+    pub async fn load(ca_path: &Path) -> Result<Self> {
         let script = include_str!("scripts/generatecert.sh");
         let project_dirs = project_dirs().await?;
 
-        if !valid_ca_directory(&ca_path).await {
+        if !valid_ca_directory(ca_path).await {
             let msg = format!("{:?} is not a valid CA directory", ca_path);
             return Err(anyhow::Error::msg(msg));
         }
@@ -145,7 +145,7 @@ impl CertificateAuthority {
 
         Ok(Self {
             project_dirs,
-            ca_path,
+            ca_path: ca_path.to_path_buf(),
             config_cache,
         })
     }

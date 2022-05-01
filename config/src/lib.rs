@@ -74,7 +74,7 @@ pub struct Proxy {
     #[serde(default)]
     pub response_wasi_module_path: Option<PathBuf>,
     #[serde(default)]
-    pub wasi_configuration_path: Option<PathBuf>,
+    pub proxy_configuration_path: Option<PathBuf>,
     #[serde(skip, default = "default_config")]
     pub wasi_configuration_bytes: Option<Bytes>,
     pub port: u16,
@@ -98,7 +98,7 @@ impl Proxy {
             pre_request_wasi_module_path: None,
             request_wasi_module_path: None,
             response_wasi_module_path: None,
-            wasi_configuration_path: None,
+            proxy_configuration_path: None,
             wasi_configuration_bytes: None,
             port: 8080,
             protocol: Protocol::Http,
@@ -161,7 +161,7 @@ impl TryFrom<Args> for Config {
         let mut config: Config = toml::from_slice(&contents).map_err(anyhow::Error::from)?;
 
         for mut proxy in config.proxy.iter_mut() {
-            if let Some(config_path) = proxy.wasi_configuration_path.as_ref() {
+            if let Some(config_path) = proxy.proxy_configuration_path.as_ref() {
                 let contents = std::fs::read(config_path)?;
                 proxy.wasi_configuration_bytes = Some(Bytes::from(contents));
             }
