@@ -8,4 +8,4 @@ Navigate to the [releases](releases) page and download a compiled release for yo
 
 ## Getting started
 
-Head over to the [docs page](https://proxysaur.us/docs) to learn about how to use proxysaur to debug HTTP applications.
+Head over to the [docs page](https://proxysaur.us/) to learn about how to use proxysaur to debug HTTP applications.
