@@ -136,6 +136,23 @@ impl Rewrite {
             Rewrite::Body(rewrite) => {
                 let replace = rewrite.replace_with.clone();
                 req.body = replace;
+                let inserted = match req
+                    .headers
+                    .iter_mut()
+                    .find(|(h, _v)| h == http::header::CONTENT_LENGTH.as_str())
+                {
+                    Some(mut header) => {
+                        header.1 = req.body.len().to_string();
+                        true
+                    }
+                    None => false,
+                };
+                if !inserted {
+                    req.headers.push((
+                        http::header::CONTENT_LENGTH.to_string(),
+                        req.body.len().to_string(),
+                    ));
+                }
                 req
             }
             Rewrite::Header(rewrite) => {
@@ -311,78 +328,81 @@ impl RequestRewrite {
     }
 }
 
-// #[cfg(test)]
-// mod request_rewrite_tests {
-//     use uuid::Uuid;
+#[cfg(test)]
+mod request_rewrite_tests {
+    use super::*;
 
-//     use super::*;
+    #[test]
+    fn request_header_rewrite() {
+        let rewrite = RequestRewrite {
+            when: vec![RuleMatch::PathMatch(MatchValue::Exact("/".into()))],
+            rewrite: Rewrite::Header(HeaderRewrite {
+                header_match: HeaderMatch {
+                    header_name: MatchValue::Exact("access-control-allow-origin".into()),
+                    header_value: MatchValue::Contains("".into()),
+                },
+                new_header_name: "$0".into(),
+                new_header_value: "*".into(),
+            }),
+        };
+        let req = HttpRequest {
+            path: "/".into(),
+            authority: "foo.com".into(),
+            host: "foo.com".into(),
+            scheme: "https".into(),
+            version: "HTTP/1.1".into(),
+            headers: vec![(
+                http::header::ACCESS_CONTROL_ALLOW_ORIGIN.to_string(),
+                "https://foo.com".to_string(),
+            )],
+            method: "GET".into(),
+            body: vec![],
+        };
+        assert!(rewrite.should_rewrite_request(&req));
+        let new_req = rewrite.rewrite(req);
+        let new_value = new_req
+            .headers
+            .iter()
+            .find(|(h, v)| h == http::header::ACCESS_CONTROL_ALLOW_ORIGIN.as_str())
+            .expect("should have a header");
+        assert_eq!(new_value.1, "*");
+    }
 
-//     #[test]
-//     fn request_header_rewrite() {
-//         let rewrite = RequestRewrite {
-//             when: vec![RuleMatch::PathMatch(MatchValue::Exact("/".into()))],
-//             rewrite: Rewrite::Header(HeaderRewrite {
-//                 header_match: HeaderMatch {
-//                     header_name: MatchValue::Exact("access-control-allow-origin".into()),
-//                     header_value: MatchValue::Contains("".into()),
-//                 },
-//                 new_header_name: "$0".into(),
-//                 new_header_value: "*".into(),
-//             }),
-//         };
-//         let req = Request::builder()
-//             .uri("/")
-//             .header(
-//                 hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN,
-//                 "https://foo.com",
-//             )
-//             .body(Body::empty())
-//             .expect("should build the request");
-//         let req = ProxyHttpRequest {
-//             request: req,
-//             id: Uuid::new_v4(),
-//         };
-//         assert!(rewrite.should_rewrite_request(&req.request));
-//         let new_req = rewrite.rewrite(req);
-//         let new_value = new_req
-//             .request
-//             .headers()
-//             .get(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN)
-//             .expect("should have a header");
-//         let s = new_value.to_str().expect("should serialize into a string");
-//         assert_eq!(s, "*");
-//     }
-
-//     #[test]
-//     fn request_body_rewrite() {
-//         let rewrite = RequestRewrite {
-//             when: vec![RuleMatch::PathMatch(MatchValue::Exact("/".into()))],
-//             rewrite: Rewrite::Body(BodyRewrite {
-//                 replace_with: "hey!".into(),
-//             }),
-//         };
-//         let req = Request::builder()
-//             .uri("/")
-//             .body(Body::empty())
-//             .expect("should build the request");
-//         assert!(rewrite.should_rewrite_request(&req));
-//         let req = ProxyHttpRequest {
-//             request: req,
-//             id: Uuid::new_v4(),
-//         };
-//         let new_req = rewrite.rewrite(req);
-//         let (parts, body) = new_req.request.into_parts();
-//         let content_length_value = parts
-//             .headers
-//             .get("content-length")
-//             .expect("should have a content length");
-//         let content_length: usize = content_length_value
-//             .to_str()
-//             .expect("should turn into a string")
-//             .parse()
-//             .expect("should parse to a number");
-//     }
-// }
+    #[test]
+    fn request_body_rewrite() {
+        let rewrite = RequestRewrite {
+            when: vec![RuleMatch::PathMatch(MatchValue::Exact("/".into()))],
+            rewrite: Rewrite::Body(BodyRewrite {
+                replace_with: "hey!".into(),
+            }),
+        };
+        let req = HttpRequest {
+            path: "/".into(),
+            authority: "foo.com".into(),
+            host: "foo.com".into(),
+            scheme: "https".into(),
+            version: "HTTP/1.1".into(),
+            headers: vec![(
+                http::header::ACCESS_CONTROL_ALLOW_ORIGIN.to_string(),
+                "https://foo.com".to_string(),
+            )],
+            method: "GET".into(),
+            body: vec![],
+        };
+        assert!(rewrite.should_rewrite_request(&req));
+        let new_req = rewrite.rewrite(req);
+        let content_length_value = new_req
+            .headers
+            .iter()
+            .find(|(h, _v)| h == http::header::CONTENT_LENGTH.as_str())
+            .expect("should have a content length");
+        let content_length: usize = content_length_value
+            .1
+            .parse()
+            .expect("should parse to a number");
+        assert_eq!(content_length, 4);
+    }
+}
 
 impl ResponseRewrite {
     /// Exists because typically the hyper client will consume the request
