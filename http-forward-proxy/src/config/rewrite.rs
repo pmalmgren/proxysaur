@@ -180,6 +180,23 @@ impl Rewrite {
             Rewrite::Body(rewrite) => {
                 let replace = rewrite.replace_with.clone();
                 resp.body = replace;
+                let inserted = match resp
+                    .headers
+                    .iter_mut()
+                    .find(|(h, _v)| h == http::header::CONTENT_LENGTH.as_str())
+                {
+                    Some(mut header) => {
+                        header.1 = resp.body.len().to_string();
+                        true
+                    }
+                    None => false,
+                };
+                if !inserted {
+                    resp.headers.push((
+                        http::header::CONTENT_LENGTH.to_string(),
+                        resp.body.len().to_string(),
+                    ));
+                }
             }
             Rewrite::Header(rewrite) => {
                 rewrite.do_rewrite(&mut resp.headers);
@@ -417,103 +434,145 @@ impl ResponseRewrite {
     }
 }
 
-// #[cfg(test)]
-// mod response_rewrite_tests {
-//     use uuid::Uuid;
+#[cfg(test)]
+mod response_rewrite_tests {
+    use super::*;
 
-//     use super::*;
+    #[test]
+    fn response_status_rewrite() {
+        let rewrite = ResponseRewrite {
+            when: vec![RuleMatch::PathMatch(MatchValue::Exact("/".into()))],
+            rewrite: Rewrite::Status(StatusRewrite {
+                status: MatchValue::Exact("303".into()),
+                new_status: "200".into(),
+            }),
+        };
+        let req = HttpRequest {
+            path: "/".into(),
+            authority: "foo.com".into(),
+            host: "foo.com".into(),
+            scheme: "https".into(),
+            version: "HTTP/1.1".into(),
+            headers: vec![(
+                http::header::ACCESS_CONTROL_ALLOW_ORIGIN.to_string(),
+                "https://foo.com".to_string(),
+            )],
+            method: "GET".into(),
+            body: vec![],
+        };
+        let mut resp = HttpResponse {
+            headers: vec![],
+            status: http::status::StatusCode::SEE_OTHER.as_u16(),
+            body: vec![],
+            request_path: req.path.clone(),
+            request_authority: req.authority.clone(),
+            request_host: req.host.clone(),
+            request_scheme: req.scheme.clone(),
+            request_version: req.version.clone(),
+            request_headers: vec![],
+            request_method: "GET".into(),
+        };
+        assert!(rewrite.should_rewrite_response(&req));
+        rewrite.rewrite(&mut resp);
+        assert_eq!(resp.status, http::StatusCode::OK.as_u16());
+    }
 
-//     #[test]
-//     fn response_status_rewrite() {
-//         let rewrite = ResponseRewrite {
-//             when: vec![RuleMatch::PathMatch(MatchValue::Exact("/".into()))],
-//             rewrite: Rewrite::Status(StatusRewrite {
-//                 status: MatchValue::Exact("303".into()),
-//                 new_status: "200".into(),
-//             }),
-//         };
-//         let req = Request::builder()
-//             .uri("/")
-//             .body(Body::empty())
-//             .expect("should build the request");
-//         let response = Response::builder()
-//             .status(StatusCode::SEE_OTHER)
-//             .body(Body::empty())
-//             .expect("should build the response");
-//         let id = Uuid::new_v4();
-//         let resp = ProxyHttpResponse { id, response };
-//         assert!(rewrite.should_rewrite_response(&req));
-//         let new_resp = rewrite.rewrite(resp);
-//         assert_eq!(new_resp.response.status(), StatusCode::OK);
-//     }
+    #[test]
+    fn response_body_rewrite() {
+        let rewrite = ResponseRewrite {
+            when: vec![RuleMatch::PathMatch(MatchValue::Exact("/".into()))],
+            rewrite: Rewrite::Body(BodyRewrite {
+                replace_with: "hey!".into(),
+            }),
+        };
+        let req = HttpRequest {
+            path: "/".into(),
+            authority: "foo.com".into(),
+            host: "foo.com".into(),
+            scheme: "https".into(),
+            version: "HTTP/1.1".into(),
+            headers: vec![(
+                http::header::ACCESS_CONTROL_ALLOW_ORIGIN.to_string(),
+                "https://foo.com".to_string(),
+            )],
+            method: "GET".into(),
+            body: vec![],
+        };
+        let mut resp = HttpResponse {
+            headers: vec![],
+            status: http::status::StatusCode::SEE_OTHER.as_u16(),
+            body: vec![],
+            request_path: req.path.clone(),
+            request_authority: req.authority.clone(),
+            request_host: req.host.clone(),
+            request_scheme: req.scheme.clone(),
+            request_version: req.version.clone(),
+            request_headers: vec![],
+            request_method: "GET".into(),
+        };
+        assert!(rewrite.should_rewrite_response(&req));
+        rewrite.rewrite(&mut resp);
 
-//     #[test]
-//     fn response_body_rewrite() {
-//         let rewrite = ResponseRewrite {
-//             when: vec![RuleMatch::PathMatch(MatchValue::Exact("/".into()))],
-//             rewrite: Rewrite::Body(BodyRewrite {
-//                 replace_with: "hey!".into(),
-//             }),
-//         };
-//         let req = Request::builder()
-//             .uri("/")
-//             .body(Body::empty())
-//             .expect("should build the request");
-//         let response = Response::builder()
-//             .body(Body::empty())
-//             .expect("should build the response");
-//         let id = Uuid::new_v4();
-//         let resp = ProxyHttpResponse { id, response };
-//         assert!(rewrite.should_rewrite_response(&req));
-//         let new_resp = rewrite.rewrite(resp);
+        let content_length_value = resp
+            .headers
+            .iter()
+            .find(|(h, _v)| h == http::header::CONTENT_LENGTH.as_str())
+            .expect("should have a content length");
+        let content_length: usize = content_length_value
+            .1
+            .parse()
+            .expect("should parse to a number");
+        assert_eq!(content_length, 4);
+    }
 
-//         let (parts, body) = new_resp.response.into_parts();
-//         let content_length_value = parts
-//             .headers
-//             .get("content-length")
-//             .expect("should have a content length");
-//         let content_length: usize = content_length_value
-//             .to_str()
-//             .expect("should turn into a string")
-//             .parse()
-//             .expect("should parse to a number");
-//         assert_eq!(content_length, 4);
-//     }
+    #[test]
+    fn response_header_rewrite() {
+        let regex = Regex::new("Bearer (?P<token>[0-9A-Za-z]+)").expect("should compile the regex");
+        let rewrite = ResponseRewrite {
+            when: vec![RuleMatch::PathMatch(MatchValue::Exact("/".into()))],
+            rewrite: Rewrite::Header(HeaderRewrite {
+                header_match: HeaderMatch {
+                    header_name: MatchValue::Exact("x-my-header".into()),
+                    header_value: MatchValue::Regex(regex),
+                },
+                new_header_name: "$0".into(),
+                new_header_value: "Basic $token".into(),
+            }),
+        };
+        let req = HttpRequest {
+            path: "/".into(),
+            authority: "foo.com".into(),
+            host: "foo.com".into(),
+            scheme: "https".into(),
+            version: "HTTP/1.1".into(),
+            headers: vec![(
+                http::header::ACCESS_CONTROL_ALLOW_ORIGIN.to_string(),
+                "https://foo.com".to_string(),
+            )],
+            method: "GET".into(),
+            body: vec![],
+        };
+        let mut resp = HttpResponse {
+            headers: vec![("x-my-header".into(), "Bearer abcd1234".into())],
+            status: http::status::StatusCode::SEE_OTHER.as_u16(),
+            body: vec![],
+            request_path: req.path.clone(),
+            request_authority: req.authority.clone(),
+            request_host: req.host.clone(),
+            request_scheme: req.scheme.clone(),
+            request_version: req.version.clone(),
+            request_headers: vec![],
+            request_method: "GET".into(),
+        };
 
-//     #[test]
-//     fn response_header_rewrite() {
-//         let regex = Regex::new("Bearer (?P<token>[0-9A-Za-z]+)").expect("should compile the regex");
-//         let rewrite = ResponseRewrite {
-//             when: vec![RuleMatch::PathMatch(MatchValue::Exact("/".into()))],
-//             rewrite: Rewrite::Header(HeaderRewrite {
-//                 header_match: HeaderMatch {
-//                     header_name: MatchValue::Exact("x-my-header".into()),
-//                     header_value: MatchValue::Regex(regex),
-//                 },
-//                 new_header_name: "$0".into(),
-//                 new_header_value: "Basic $token".into(),
-//             }),
-//         };
-//         let req = Request::builder()
-//             .uri("/")
-//             .body(Body::empty())
-//             .expect("should build the request");
-//         let id = Uuid::new_v4();
-//         let response = Response::builder()
-//             .header("x-my-header", "Bearer abcd1234")
-//             .body(Body::empty())
-//             .expect("should build the response");
-//         let resp = ProxyHttpResponse { id, response };
-
-//         assert!(rewrite.should_rewrite_response(&req));
-//         let new_resp = rewrite.rewrite(resp);
-//         let headers = new_resp.response.headers();
-//         let rewritten_header = headers
-//             .get("x-my-header")
-//             .expect("X-My-Header should exist");
-//         let rewritten_header_text = rewritten_header
-//             .to_str()
-//             .expect("Should convert header to a string");
-//         assert_eq!(rewritten_header_text, "Basic abcd1234");
-//     }
-// }
+        assert!(rewrite.should_rewrite_response(&req));
+        rewrite.rewrite(&mut resp);
+        let rewritten_header = resp
+            .headers
+            .iter()
+            .find(|(h, _v)| h == "x-my-header")
+            .expect("X-My-Header should exist");
+        let rewritten_header_text = &rewritten_header.1;
+        assert_eq!(rewritten_header_text, "Basic abcd1234");
+    }
+}
