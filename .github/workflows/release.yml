@@ -42,5 +42,6 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           use-cross: false
+          toolchain: ${{ matrix.rust_version }}-${{ matrix.target }}
           command: build
           args: --locked --release --target=${{ matrix.target }}
