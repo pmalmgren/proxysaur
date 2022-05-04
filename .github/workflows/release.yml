@@ -26,6 +26,7 @@ jobs:
           toolchain: ${{ matrix.rust_version }}
           override: true
           target: ${{ matrix.target }}
+          default: true
 
       - name: Show version information (Rust, cargo, GCC)
         shell: bash
