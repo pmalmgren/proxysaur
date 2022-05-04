@@ -1,20 +1,83 @@
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - "v*"
 
 jobs:
   release:
     name: release ${{ matrix.target }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        target: [x86_64-pc-windows-gnu, x86_64-unknown-linux-musl, x86_64-apple-darwin]
+        include:
+          - build: linux
+            os: ubuntu-latest
+            rust_version: stable
+            target: x86_64-unknown-linux-gnu
+          - build: macos
+            os: macos-10.15
+            rust_version: stable
+            target: x86_64-apple-darwin
     steps:
-      - uses: actions/checkout@master
-      - name: Compile and release
-        uses: rust-build/rust-build.action@latest
+      - uses: actions/checkout@v2
+      - name: Install Rust ${{ env.rust_version }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust_version }}
+          override: true
+          target: ${{ matrix.target }}
+          default: true
+
+      - name: Show toolchain information
+        shell: bash
+        run: |
+          gcc --version || true
+          rustup -V
+          rustup toolchain list
+          rustup default
+          cargo -V
+          rustc -V
+
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: --locked --release --target=${{ matrix.target }}
+
+      - name: Package Artifacts
+        run: |
+          ASSET_PATH="proxysaur-$RELEASE_VERSION-${{ matrix.target }}.tar.gz"
+          echo "ASSET_PATH=$ASSET_PATH" >> $GITHUB_ENV
+
+      - name: Compress artifacts
+        uses: a7ul/tar-action@v1.1.0
+        with:
+          command: c
+          cwd: target/${{ matrix.target }}/release
+          files: |
+            proxysaur
+          outPath: ${{ env.ASSET_PATH }}
+
+      - name: Create Checksum
+        run: |
+          CHECKSUM_PATH="$ASSET_PATH.sha256"
+          echo "CHECKSUM_PATH=$CHECKSUM_PATH" >> $GITHUB_ENV
+          case $RUNNER_OS in
+              Linux)
+                  sha256sum $ASSET_PATH > $CHECKSUM_PATH
+                  ;;
+              macOS)
+                  shasum -a 256 $ASSET_PATH > $CHECKSUM_PATH
+                  ;;
+          esac
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+         files: |
+           ${{ env.ASSET_PATH }}
+           ${{ env.CHECKSUM_PATH }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUSTTARGET: ${{ matrix.target }}
-          EXTRA_FILES: "README.md LICENSE"
+         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
