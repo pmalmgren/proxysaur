@@ -15,7 +15,7 @@ jobs:
           #   os: ubuntu-latest
           #   rust_version: stable
           - build: macos
-            os: macos-latest
+            os: macos-10.15
             rust_version: stable
             target: x86_64-apple-darwin
     steps:
@@ -26,5 +26,10 @@ jobs:
           toolchain: ${{ matrix.rust_version }}
           override: true
           target: ${{ matrix.target }}
-      - name: Compile and release ${{ matrix.os }}
-        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: false
+          command: build
+          args: --locked --release --target=${{ matrix.target }}
