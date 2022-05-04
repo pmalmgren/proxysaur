@@ -11,19 +11,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - build: linux
-            os: ubuntu-latest
-            rust_version: stable
-            target: x86_64-unknown-linux-musl
+          # - build: linux
+          #   os: ubuntu-latest
+          #   rust_version: stable
           - build: macos
             os: macos-latest
             rust_version: stable
-            target: x86_64-apple-darwin
     steps:
       - uses: actions/checkout@v2
+      - name: Install Rust ${{ env.rust_version }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust_version }}
+          override: true
       - name: Compile and release ${{ matrix.os }}
-        uses: rust-build/rust-build.action@latest
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          EXTRA_FILES: "README.md LICENSE"
-          RUSTTARGET: ${{ matrix.target }}
+        run: cargo build --release
