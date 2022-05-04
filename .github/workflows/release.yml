@@ -17,6 +17,7 @@ jobs:
           - build: macos
             os: macos-latest
             rust_version: stable
+            target: x86_64-apple-darwin
     steps:
       - uses: actions/checkout@v2
       - name: Install Rust ${{ env.rust_version }}
@@ -24,5 +25,6 @@ jobs:
         with:
           toolchain: ${{ matrix.rust_version }}
           override: true
+          target: x86_64-apple-darwin
       - name: Compile and release ${{ matrix.os }}
-        run: cargo build --release
+        run: cargo build --release --target ${{ matrix.target }}
