@@ -25,6 +25,6 @@ jobs:
         with:
           toolchain: ${{ matrix.rust_version }}
           override: true
-          target: x86_64-apple-darwin
+          target: ${{ matrix.target }}
       - name: Compile and release ${{ matrix.os }}
         run: cargo build --release --target ${{ matrix.target }}
