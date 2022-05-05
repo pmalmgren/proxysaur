@@ -48,7 +48,7 @@ jobs:
 
       - name: Package Artifacts
         run: |
-          ASSET_PATH="proxysaur-$RELEASE_VERSION-${{ matrix.target }}.tar.gz"
+          ASSET_PATH="proxysaur-${GITHUB_REF##*/}-${{ matrix.target }}.tar.gz"
           echo "ASSET_PATH=$ASSET_PATH" >> $GITHUB_ENV
 
       - name: Compress artifacts
