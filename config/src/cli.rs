@@ -1,4 +1,4 @@
-use std::{io::Write, path::PathBuf, str::FromStr};
+use std::{io::Write, num::ParseIntError, path::PathBuf, str::FromStr};
 
 use anyhow::Result;
 
@@ -45,11 +45,25 @@ fn try_input<T: FromStr>(prompt: &str) -> T {
     }
 }
 
+struct Port(Option<u16>);
+
+impl FromStr for Port {
+    type Err = ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.is_empty() {
+            Ok(Port(None))
+        } else {
+            u16::from_str(s).map(|v| Port(Some(v)))
+        }
+    }
+}
+
 fn get_proxy() -> Result<Proxy> {
     let mut builder = ProxyBuilder::create_empty();
 
     let address: String = try_input("Enter host: ");
-    let port: u16 = try_input("Enter port: ");
+    let port: Option<u16> = try_input::<Port>("Enter port: ").0;
     let protocol: Protocol = try_input("Enter protocol [http|httpforward|tcp]: ");
     let tls: bool = try_input("Use tls [true/false]: ");
 

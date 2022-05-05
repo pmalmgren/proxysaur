@@ -77,7 +77,7 @@ pub struct Proxy {
     pub proxy_configuration_path: Option<PathBuf>,
     #[serde(skip, default = "default_config")]
     pub wasi_configuration_bytes: Option<Bytes>,
-    pub port: u16,
+    pub port: Option<u16>,
     pub protocol: Protocol,
     pub tls: bool,
     #[serde(default = "default_address")]
@@ -100,7 +100,7 @@ impl Proxy {
             response_wasi_module_path: None,
             proxy_configuration_path: None,
             wasi_configuration_bytes: None,
-            port: 8080,
+            port: Some(8080),
             protocol: Protocol::Http,
             tls: false,
             address: "blah".into(),
@@ -112,7 +112,11 @@ impl Proxy {
     pub fn address(&self) -> String {
         let mut addr = self.address.clone();
         addr.push(':');
-        addr.push_str(&self.port.to_string());
+        if let Some(port) = self.port {
+            addr.push_str(&port.to_string());
+        } else {
+            addr.push('0');
+        }
         addr
     }
 
