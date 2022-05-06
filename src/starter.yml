@@ -1,0 +1,17 @@
+hosts:
+  proxysaur.us:
+    scheme: https
+    response_rewrites:
+      - when:
+          - path:
+              exact: /test
+        rewrite:
+          replace_with: |
+            <!DOCTYPE html>
+            <html>
+              <body>
+                <h1>Proxysaur has eaten your website.</h1>
+                <p>If this works, it means your proxy is correctly configured. Congratulations!</p>
+                <p>To get started, head over to the <a href="/http_configuration.html#configure-the-forward-proxy">configuration docs page.</a></p>
+              </body>
+            </html>
