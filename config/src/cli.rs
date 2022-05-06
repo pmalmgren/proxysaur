@@ -1,11 +1,11 @@
-use std::{io::Write, path::PathBuf, str::FromStr};
+use std::{io::Write, num::ParseIntError, path::PathBuf, str::FromStr};
 
 use anyhow::Result;
 
 use crate::{Config, Protocol, Proxy, ProxyBuilder};
 
 /// Responsible for creating a proxysaur.toml file
-pub fn init(path: Option<PathBuf>) -> Result<()> {
+pub fn init(path: Option<PathBuf>) -> Result<PathBuf> {
     let path = match path {
         Some(path) => path,
         None => {
@@ -16,11 +16,13 @@ pub fn init(path: Option<PathBuf>) -> Result<()> {
     };
 
     match std::fs::metadata(&path) {
-        Ok(_metadata) => eprintln!("File exists at {:?}.", path),
-        Err(_) => std::fs::write(path, "")?,
+        Ok(_metadata) => {}
+        Err(_) => std::fs::write(&path, "")?,
     };
 
-    Ok(())
+    eprintln!("Using configuration file: {:#?}", path);
+
+    Ok(path)
 }
 
 fn try_input<T: FromStr>(prompt: &str) -> T {
@@ -45,11 +47,25 @@ fn try_input<T: FromStr>(prompt: &str) -> T {
     }
 }
 
+struct Port(Option<u16>);
+
+impl FromStr for Port {
+    type Err = ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.is_empty() {
+            Ok(Port(None))
+        } else {
+            u16::from_str(s).map(|v| Port(Some(v)))
+        }
+    }
+}
+
 fn get_proxy() -> Result<Proxy> {
     let mut builder = ProxyBuilder::create_empty();
 
     let address: String = try_input("Enter host: ");
-    let port: u16 = try_input("Enter port: ");
+    let port: Option<u16> = try_input::<Port>("Enter port: ").0;
     let protocol: Protocol = try_input("Enter protocol [http|httpforward|tcp]: ");
     let tls: bool = try_input("Use tls [true/false]: ");
 
@@ -120,7 +136,7 @@ fn get_proxy() -> Result<Proxy> {
         .map_err(anyhow::Error::from)
 }
 
-pub fn add_proxy(conf_path: Option<PathBuf>) -> Result<()> {
+pub async fn add_proxy(conf_path: Option<PathBuf>) -> Result<()> {
     let conf_path = match conf_path {
         Some(conf_path) => conf_path,
         None => {
@@ -133,10 +149,8 @@ pub fn add_proxy(conf_path: Option<PathBuf>) -> Result<()> {
     let mut config: Config = toml::from_slice(&config_contents)?;
 
     let proxy = get_proxy()?;
-    config.proxy.push(proxy);
-
-    let new_config_contents = toml::to_string_pretty(&config)?;
-    std::fs::write(conf_path, new_config_contents)?;
+    config.add_proxy(proxy);
+    config.persist(&conf_path).await?;
 
     Ok(())
 }

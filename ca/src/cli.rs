@@ -1,42 +1,93 @@
 use anyhow::Result;
-use std::{os::unix::fs::PermissionsExt, path::PathBuf};
+use openssl::{asn1::Asn1Time, x509::X509};
+use std::{
+    os::unix::fs::PermissionsExt,
+    path::{Path, PathBuf},
+};
 use tokio::io::AsyncWriteExt;
 
-use crate::{project_dirs, valid_ca_directory, CaError};
+use crate::{init_project_dirs, valid_ca_directory, CaError};
 
 const CERT_EXTENSIONS: &[&str] = &["crt", "key", "pem", "csr", "ext", "srl", "sh"];
+
+async fn clear_ca_directory(ca_dir: &Path) -> Result<()> {
+    let mut files = tokio::fs::read_dir(&ca_dir).await?;
+    while let Ok(Some(file)) = files.next_entry().await {
+        let path = file.path();
+        let should_delete = if path.ends_with("config") {
+            true
+        } else if let Some(Some(ext)) = file.path().extension().map(|path| path.to_str()) {
+            CERT_EXTENSIONS.contains(&ext)
+        } else {
+            false
+        };
+
+        if should_delete {
+            tokio::fs::remove_file(path).await?;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn print_ca_instructions(path: &Path) {
+    let cert_path = path.join("myca.crt");
+    eprintln!("Root Certificate: {:#?}", cert_path);
+    eprintln!("To trust this certificate, run: ");
+    eprintln!(
+        "sudo cp {:#?} /usr/local/share/ca-certificates/extra",
+        cert_path
+    );
+    eprintln!("sudo update-ca-certificates");
+    eprintln!("To use in a browser, read more here: https://proxysaur.us/ca#trusting-the-root-certificate-in-your-browser");
+}
+
+#[cfg(target_os = "macos")]
+fn print_ca_instructions(path: &Path) {
+    let cert_path = path.join("myca.crt");
+    eprintln!("Root Certificate: {:#?}", cert_path);
+    eprintln!("To trust this certificate, run: ");
+    eprintln!(
+        "security add-trusted-cert -d -r trustRoot -k $HOME/Library/Keychains/login.keychain {#:?}",
+        cert_path
+    );
+    eprintln!("To use in a browser, read more here: https://proxysaur.us/ca#trusting-the-root-certificate-in-your-browser");
+}
 
 pub async fn generate_ca(path: Option<PathBuf>, force_overwrite: bool) -> Result<PathBuf> {
     let ca_dir = match path {
         Some(ca_dir) => ca_dir,
         None => {
-            let project_dirs = project_dirs().await?;
+            let project_dirs = init_project_dirs().await?;
             tracing::debug!(?project_dirs, "Using project dirs");
             project_dirs.data_dir().to_path_buf()
         }
     };
 
     match (valid_ca_directory(&ca_dir).await, force_overwrite) {
-        (true, true) => {
-            let mut files = tokio::fs::read_dir(&ca_dir).await?;
-            while let Ok(Some(file)) = files.next_entry().await {
-                let path = file.path();
-                let should_delete = if path.ends_with("config") {
-                    true
-                } else if let Some(Some(ext)) = file.path().extension().map(|path| path.to_str()) {
-                    CERT_EXTENSIONS.contains(&ext)
-                } else {
-                    false
-                };
-
-                if should_delete {
-                    tokio::fs::remove_file(path).await?;
-                }
-            }
-        }
+        (true, true) => clear_ca_directory(&ca_dir).await?,
         (true, false) => {
-            eprintln!("Refusing to over write existing CA dir: {:?}", ca_dir);
-            return Ok(ca_dir);
+            let cert_path = ca_dir.join("myca.crt");
+            let cert_bytes = tokio::fs::read(&cert_path).await?;
+            let cert = X509::from_pem(&cert_bytes)?;
+
+            let unix_ts = chrono::Local::now().timestamp();
+            let now = Asn1Time::from_unix(unix_ts)?;
+
+            let after = cert.not_after();
+            let before = cert.not_before();
+
+            if now > after {
+                eprintln!("Expired certificate. Rebuilding directory.");
+                clear_ca_directory(&ca_dir).await?;
+            } else if now < before {
+                eprintln!("Certificate isn't active yet.");
+            } else {
+                eprintln!("Using existing CA dir: {:?}", ca_dir);
+                print_ca_instructions(&ca_dir);
+                return Ok(ca_dir);
+            }
         }
         _ => {}
     };
@@ -70,7 +121,7 @@ pub async fn generate_ca(path: Option<PathBuf>, force_overwrite: bool) -> Result
     }
 
     let output = tokio::process::Command::new("generateca.sh")
-        .args([ca_dir_str])
+        .args([escape_path(ca_dir_str)])
         .output()
         .await
         .map_err(|error| {
@@ -82,5 +133,40 @@ pub async fn generate_ca(path: Option<PathBuf>, force_overwrite: bool) -> Result
         return Err(anyhow::Error::from(CaError::GenerateCertificate));
     }
 
+    print_ca_instructions(&ca_dir);
+
     Ok(ca_dir.to_path_buf())
+}
+
+fn escape_path(path: &str) -> String {
+    let mut new_str: String = String::new();
+    let path_chars: Vec<char> = path.chars().collect();
+
+    for (i, ch) in path_chars.iter().enumerate() {
+        if *ch == ' ' && i > 0 && path_chars[i - 1] != '\\' {
+            new_str.push('\\');
+        }
+        new_str.push(*ch);
+    }
+
+    new_str
+}
+
+#[cfg(test)]
+mod test {
+    use super::escape_path;
+
+    #[test]
+    fn escapes_spaces() {
+        let path = "/Users/me/A Path";
+        let escaped = escape_path(path);
+        assert_eq!(escaped, r"/Users/me/A\ Path");
+    }
+
+    #[test]
+    fn no_double_escape() {
+        let path = r"/Users/me/A\ Path";
+        let escaped = escape_path(path);
+        assert_eq!(escaped, r"/Users/me/A\ Path");
+    }
 }

@@ -1,5 +1,7 @@
 use anyhow::Result;
-use config::{Args, Config};
+use bytes::Bytes;
+use ca::init_project_dirs;
+use config::{Args, Config, Protocol, Proxy};
 
 mod proxy;
 
@@ -26,7 +28,7 @@ async fn main() -> Result<()> {
                     path
                 }
             };
-            eprintln!("Go to the docs page to see how to trust this CA: https://proxysaur.us/docs");
+            eprintln!("Go to the docs page to see how to trust this CA: https://proxysaur.us/ca#trusting-the-root-certificate-in-your-browser");
             println!("{}", path);
             return Ok(());
         }
@@ -35,7 +37,79 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         Some(config::Commands::AddProxy { path }) => {
-            let _res = config::cli::add_proxy(path)?;
+            let _res = config::cli::add_proxy(path).await?;
+            return Ok(());
+        }
+        Some(config::Commands::Http {
+            config_path,
+            http_proxy_configuration_path,
+            port,
+        }) => {
+            let project_dirs = init_project_dirs().await?;
+            let default_config_path = project_dirs.config_dir().join("proxysaur.toml");
+            let config_path = match config_path {
+                Some(config_path) => config_path,
+                None => match config::cli::init(Some(default_config_path)) {
+                    Ok(path) => path,
+                    Err(err) => {
+                        eprintln!("Error generating or reading configuration: {err}");
+                        return Err(err);
+                    }
+                },
+            };
+
+            let mut config = Config::try_from(config_path.as_path())?;
+
+            let ca_path = match ca::cli::generate_ca(config.ca_path.clone(), false).await {
+                Ok(ca_path) => ca_path,
+                Err(err) => {
+                    eprintln!("Error generating or reading certificate authority: {err}");
+                    return Err(err);
+                }
+            };
+
+            if config.ca_path.is_none() {
+                config.ca_path = Some(ca_path);
+                config.persist(&config_path).await?;
+            }
+
+            if !config
+                .proxy
+                .iter()
+                .any(|proxy| proxy.protocol == Protocol::HttpForward)
+            {
+                let (proxy_configuration_path, contents) = match http_proxy_configuration_path {
+                    Some(path) => {
+                        let contents = tokio::fs::read(&path).await?;
+                        (path, contents)
+                    }
+                    None => {
+                        let starter_config_contents = include_bytes!("starter.yml").to_vec();
+                        let configuration_path = project_dirs.config_dir().join("config.yml");
+                        tokio::fs::write(&configuration_path, &starter_config_contents).await?;
+                        eprintln!("Proxy configuration path: {:#?}", configuration_path);
+                        eprintln!("Visit this URL to make sure everything is working: https://proxysaur.us/test");
+                        (configuration_path, starter_config_contents)
+                    }
+                };
+                let proxy = Proxy {
+                    pre_request_wasi_module_path: None,
+                    request_wasi_module_path: None,
+                    response_wasi_module_path: None,
+                    proxy_configuration_path: Some(proxy_configuration_path),
+                    wasi_configuration_bytes: Some(Bytes::from(contents)),
+                    port,
+                    protocol: Protocol::HttpForward,
+                    tls: true,
+                    address: "localhost".into(),
+                    upstream_address: "".into(),
+                    upstream_port: 9999,
+                };
+
+                config.add_proxy(proxy);
+                config.persist(&config_path).await?;
+            }
+            proxy::run(config).await?;
             return Ok(());
         }
         None => {}

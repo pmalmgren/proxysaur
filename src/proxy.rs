@@ -1,10 +1,16 @@
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::channel;
+use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
+use bytes::Bytes;
 use futures::future::{join_all, try_join_all};
+use notify::{watcher, RecursiveMode, Watcher};
 use protocols::http::proxy::{http_forward, http_proxy, HttpContext};
 use protocols::tcp::tunnel;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::RwLock;
 use wasi_runtime::WasiRuntime;
 
 use config::{Config, Protocol, Proxy};
@@ -122,9 +128,55 @@ async fn listen(
     wasi_runtime: WasiRuntime,
     context: HttpContext,
 ) {
+    let config_path = proxy.proxy_configuration_path.clone();
+    let proxy = Arc::new(RwLock::new(proxy));
+    let proxy_ = proxy.clone();
+
+    if let Some(config_path) = config_path {
+        tokio::task::spawn_blocking(move || {
+            let (tx, rx) = channel();
+            let mut watcher = watcher(tx, Duration::from_secs(1)).unwrap();
+            let watch_path = config_path.parent().unwrap();
+            tracing::info!(?watch_path, "Watching path");
+            watcher
+                .watch(watch_path, RecursiveMode::NonRecursive)
+                .unwrap();
+
+            loop {
+                if let Ok(event) = rx.recv_timeout(Duration::from_secs(1)) {
+                    match event {
+                        notify::DebouncedEvent::Write(path)
+                        | notify::DebouncedEvent::Create(path) => {
+                            if path == config_path {
+                                tracing::info!("Configuration changed. Updating..");
+                                if let Ok(new_contents) = std::fs::read(path) {
+                                    let wasi_configuration_bytes = Bytes::from(new_contents);
+                                    {
+                                        let mut proxy = proxy_.blocking_write();
+                                        proxy.wasi_configuration_bytes =
+                                            Some(wasi_configuration_bytes);
+                                    }
+                                }
+                            }
+                        }
+                        event => tracing::info!(?event, "Received event"),
+                    }
+                }
+            }
+        });
+    }
     loop {
-        let (socket, _) = listener.accept().await.unwrap();
-        let proxy = proxy.clone();
+        let socket = match listener.accept().await {
+            Ok((socket, _)) => socket,
+            Err(err) => {
+                tracing::error!(?err, "Error accepting connection.");
+                continue;
+            }
+        };
+        let proxy = {
+            let proxy = proxy.read().await;
+            proxy.clone()
+        };
         let wasi_runtime = wasi_runtime.clone();
         let context = context.clone();
         tokio::spawn(async move {
@@ -138,6 +190,17 @@ async fn listen(
 async fn bind(proxy: Proxy) -> Result<(TcpListener, Proxy)> {
     TcpListener::bind(&proxy.address())
         .await
-        .map(|listener| (listener, proxy))
+        .map(|listener| {
+            match listener.local_addr() {
+                Ok(addr) => eprintln!(
+                    "Proxy {:#?} listening on address: http://{}:{}",
+                    proxy.protocol,
+                    proxy.address,
+                    addr.port()
+                ),
+                Err(err) => eprintln!("Error fetching local address: {}", err),
+            };
+            (listener, proxy)
+        })
         .map_err(anyhow::Error::from)
 }

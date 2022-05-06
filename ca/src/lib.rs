@@ -50,7 +50,7 @@ impl TryInto<ServerConfig> for CertAndKey {
     }
 }
 
-pub(crate) async fn project_dirs() -> Result<ProjectDirs> {
+pub async fn init_project_dirs() -> Result<ProjectDirs> {
     let project_dirs = ProjectDirs::from("com", "proxysaur", "proxysaur")
         .ok_or_else(|| anyhow::Error::msg("Could not build project dirs"))?;
 
@@ -115,7 +115,7 @@ impl CertificateAuthority {
     /// Loads the `generatecert.sh` script which dynamically generates certificate requests.
     pub async fn load(ca_path: &Path) -> Result<Self> {
         let script = include_str!("scripts/generatecert.sh");
-        let project_dirs = project_dirs().await?;
+        let project_dirs = init_project_dirs().await?;
 
         if !valid_ca_directory(ca_path).await {
             let msg = format!("{:?} is not a valid CA directory", ca_path);
