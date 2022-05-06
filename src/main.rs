@@ -1,4 +1,5 @@
 use anyhow::Result;
+use bytes::Bytes;
 use ca::init_project_dirs;
 use config::{Args, Config, Protocol, Proxy};
 
@@ -77,13 +78,18 @@ async fn main() -> Result<()> {
                 .iter()
                 .any(|proxy| proxy.protocol == Protocol::HttpForward)
             {
-                let proxy_configuration_path = match http_proxy_configuration_path {
-                    Some(path) => path,
+                let (proxy_configuration_path, contents) = match http_proxy_configuration_path {
+                    Some(path) => {
+                        let contents = tokio::fs::read(&path).await?;
+                        (path, contents)
+                    }
                     None => {
-                        let starter_config = include_bytes!("starter.yml");
+                        let starter_config_contents = include_bytes!("starter.yml").to_vec();
                         let configuration_path = project_dirs.config_dir().join("config.yml");
-                        tokio::fs::write(&configuration_path, starter_config).await?;
-                        configuration_path
+                        tokio::fs::write(&configuration_path, &starter_config_contents).await?;
+                        eprintln!("Proxy configuration path: {:#?}", configuration_path);
+                        eprintln!("Visit this URL to make sure everything is working: https://proxysaur.us/test");
+                        (configuration_path, starter_config_contents)
                     }
                 };
                 let proxy = Proxy {
@@ -91,7 +97,7 @@ async fn main() -> Result<()> {
                     request_wasi_module_path: None,
                     response_wasi_module_path: None,
                     proxy_configuration_path: Some(proxy_configuration_path),
-                    wasi_configuration_bytes: None,
+                    wasi_configuration_bytes: Some(Bytes::from(contents)),
                     port,
                     protocol: Protocol::HttpForward,
                     tls: true,
