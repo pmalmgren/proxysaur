@@ -5,7 +5,7 @@ use anyhow::Result;
 use crate::{Config, Protocol, Proxy, ProxyBuilder};
 
 /// Responsible for creating a proxysaur.toml file
-pub fn init(path: Option<PathBuf>) -> Result<()> {
+pub fn init(path: Option<PathBuf>) -> Result<PathBuf> {
     let path = match path {
         Some(path) => path,
         None => {
@@ -17,10 +17,10 @@ pub fn init(path: Option<PathBuf>) -> Result<()> {
 
     match std::fs::metadata(&path) {
         Ok(_metadata) => eprintln!("File exists at {:?}.", path),
-        Err(_) => std::fs::write(path, "")?,
+        Err(_) => std::fs::write(&path, "")?,
     };
 
-    Ok(())
+    Ok(path)
 }
 
 fn try_input<T: FromStr>(prompt: &str) -> T {
@@ -134,7 +134,7 @@ fn get_proxy() -> Result<Proxy> {
         .map_err(anyhow::Error::from)
 }
 
-pub fn add_proxy(conf_path: Option<PathBuf>) -> Result<()> {
+pub async fn add_proxy(conf_path: Option<PathBuf>) -> Result<()> {
     let conf_path = match conf_path {
         Some(conf_path) => conf_path,
         None => {
@@ -147,10 +147,8 @@ pub fn add_proxy(conf_path: Option<PathBuf>) -> Result<()> {
     let mut config: Config = toml::from_slice(&config_contents)?;
 
     let proxy = get_proxy()?;
-    config.proxy.push(proxy);
-
-    let new_config_contents = toml::to_string_pretty(&config)?;
-    std::fs::write(conf_path, new_config_contents)?;
+    config.add_proxy(proxy);
+    config.persist(&conf_path).await?;
 
     Ok(())
 }

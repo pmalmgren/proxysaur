@@ -138,6 +138,17 @@ async fn listen(
 async fn bind(proxy: Proxy) -> Result<(TcpListener, Proxy)> {
     TcpListener::bind(&proxy.address())
         .await
-        .map(|listener| (listener, proxy))
+        .map(|listener| {
+            match listener.local_addr() {
+                Ok(addr) => eprintln!(
+                    "Proxy {:#?} listening on address: http://{}:{}",
+                    proxy.protocol,
+                    proxy.address,
+                    addr.port()
+                ),
+                Err(err) => eprintln!("Error fetching local address: {}", err),
+            };
+            (listener, proxy)
+        })
         .map_err(anyhow::Error::from)
 }

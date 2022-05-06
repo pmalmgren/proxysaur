@@ -1,4 +1,7 @@
-use std::{path::PathBuf, str::FromStr};
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use anyhow::Result;
 use bytes::Bytes;
@@ -34,6 +37,15 @@ pub enum Commands {
     Init { path: Option<PathBuf> },
     /// Adds a proxy to the configuration
     AddProxy { path: Option<PathBuf> },
+    /// Starts proxysaur in http forward mode
+    Http {
+        /// Path to the TOML configuration file, optional
+        #[clap(short, long)]
+        config_path: Option<PathBuf>,
+        /// Path to the YAML HTTP Proxy configuration file, optional
+        #[clap(long)]
+        http_proxy_configuration_path: Option<PathBuf>,
+    },
 }
 
 fn default_address() -> String {
@@ -134,9 +146,21 @@ fn default_proxy() -> Vec<Proxy> {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
+    pub ca_path: Option<PathBuf>,
     #[serde(default = "default_proxy")]
     pub proxy: Vec<Proxy>,
-    pub ca_path: Option<PathBuf>,
+}
+
+impl Config {
+    pub fn add_proxy(&mut self, proxy: Proxy) {
+        self.proxy.push(proxy);
+    }
+
+    pub async fn persist(&self, path: &Path) -> Result<()> {
+        let new_config_contents = toml::to_string_pretty(&self)?;
+        tokio::fs::write(path, new_config_contents).await?;
+        Ok(())
+    }
 }
 
 impl Args {
@@ -151,16 +175,10 @@ impl Default for Args {
     }
 }
 
-impl TryFrom<Args> for Config {
+impl TryFrom<&Path> for Config {
     type Error = anyhow::Error;
 
-    fn try_from(value: Args) -> Result<Self, Self::Error> {
-        let path = value.config_path.map(Ok).unwrap_or_else(|| {
-            std::env::current_dir().map(|mut path| {
-                path.push("proxysaur.toml");
-                path
-            })
-        })?;
+    fn try_from(path: &Path) -> Result<Self, Self::Error> {
         let contents = std::fs::read(path)?;
         let mut config: Config = toml::from_slice(&contents).map_err(anyhow::Error::from)?;
 
@@ -172,6 +190,20 @@ impl TryFrom<Args> for Config {
         }
 
         Ok(config)
+    }
+}
+
+impl TryFrom<Args> for Config {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Args) -> Result<Self, Self::Error> {
+        let path = value.config_path.map(Ok).unwrap_or_else(|| {
+            std::env::current_dir().map(|mut path| {
+                path.push("proxysaur.toml");
+                path
+            })
+        })?;
+        Config::try_from(path.as_path())
     }
 }
 
