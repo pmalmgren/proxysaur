@@ -16,13 +16,11 @@ $ proxysaur http
 
 ### Trust the CA
 
-Pay attention to the commands listed in the output underneath "To trust this certificate." For example, on macOS you'd run:
+Pay attention to the commands listed in the output underneath "To trust this certificate." For example, on macOS you'd run the line that looks like:
 
 ```bash
-$ security add-trusted-cert -d -r trustRoot -k $HOME/Library/Keychains/login.keychain CA_LOC/myca.crt
+security add-trusted-cert -d -r trustRoot -k $HOME/Library/Keychains/login.keychain CA_LOC/myca.crt
 ```
-
-Where `CA_LOC` is the location of the certificate in the output.
 
 ### Test it out
 
