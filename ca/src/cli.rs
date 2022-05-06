@@ -49,7 +49,7 @@ fn print_ca_instructions(path: &Path) {
     eprintln!("Root Certificate: {:#?}", cert_path);
     eprintln!("To trust this certificate, run: ");
     eprintln!(
-        "security add-trusted-cert -d -r trustRoot -k $HOME/Library/Keychains/login.keychain {#:?}",
+        "security add-trusted-cert -d -r trustRoot -k $HOME/Library/Keychains/login.keychain {:#?}",
         cert_path
     );
     eprintln!("To use in a browser, read more here: https://proxysaur.us/ca#trusting-the-root-certificate-in-your-browser");
