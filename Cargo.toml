@@ -14,11 +14,13 @@ exclude = [
 [dependencies]
 protocols = { path = "protocols" }
 wasi-runtime = { path = "wasi-runtime" }
+bytes = "1.1.0"
 config = { path = "config" }
 ca = { path = "ca" }
 anyhow = "1.0.56"
 directories = "4.0.1"
 futures = "0.3.21"
+notify = "4.0.17"
 tokio = { version = "1.17.0", features = ["full"] }
 tokio-native-tls = "0.3.0"
 tracing = "0.1.34"
