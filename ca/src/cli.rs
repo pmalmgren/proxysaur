@@ -121,7 +121,7 @@ pub async fn generate_ca(path: Option<PathBuf>, force_overwrite: bool) -> Result
     }
 
     let output = tokio::process::Command::new("generateca.sh")
-        .args([ca_dir_str])
+        .args([escape_path(ca_dir_str)])
         .output()
         .await
         .map_err(|error| {
@@ -136,4 +136,37 @@ pub async fn generate_ca(path: Option<PathBuf>, force_overwrite: bool) -> Result
     print_ca_instructions(&ca_dir);
 
     Ok(ca_dir.to_path_buf())
+}
+
+fn escape_path(path: &str) -> String {
+    let mut new_str: String = String::new();
+    let path_chars: Vec<char> = path.chars().collect();
+
+    for (i, ch) in path_chars.iter().enumerate() {
+        if *ch == ' ' && i > 0 && path_chars[i - 1] != '\\' {
+            new_str.push('\\');
+        }
+        new_str.push(*ch);
+    }
+
+    new_str
+}
+
+#[cfg(test)]
+mod test {
+    use super::escape_path;
+
+    #[test]
+    fn escapes_spaces() {
+        let path = "/Users/me/A Path";
+        let escaped = escape_path(path);
+        assert_eq!(escaped, r"/Users/me/A\ Path");
+    }
+
+    #[test]
+    fn no_double_escape() {
+        let path = r"/Users/me/A\ Path";
+        let escaped = escape_path(path);
+        assert_eq!(escaped, r"/Users/me/A\ Path");
+    }
 }

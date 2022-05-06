@@ -45,6 +45,8 @@ pub enum Commands {
         /// Path to the YAML HTTP Proxy configuration file, optional
         #[clap(long)]
         http_proxy_configuration_path: Option<PathBuf>,
+        #[clap(long, short)]
+        port: Option<u16>,
     },
 }
 
@@ -127,7 +129,7 @@ impl Proxy {
         if let Some(port) = self.port {
             addr.push_str(&port.to_string());
         } else {
-            addr.push('0');
+            addr.push_str("9999");
         }
         addr
     }

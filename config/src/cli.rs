@@ -16,9 +16,11 @@ pub fn init(path: Option<PathBuf>) -> Result<PathBuf> {
     };
 
     match std::fs::metadata(&path) {
-        Ok(_metadata) => eprintln!("File exists at {:?}.", path),
+        Ok(_metadata) => {}
         Err(_) => std::fs::write(&path, "")?,
     };
+
+    eprintln!("Using configuration file: {:#?}", path);
 
     Ok(path)
 }

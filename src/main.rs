@@ -42,12 +42,13 @@ async fn main() -> Result<()> {
         Some(config::Commands::Http {
             config_path,
             http_proxy_configuration_path,
-            ..
+            port,
         }) => {
             let project_dirs = init_project_dirs().await?;
+            let default_config_path = project_dirs.config_dir().join("proxysaur.toml");
             let config_path = match config_path {
                 Some(config_path) => config_path,
-                None => match config::cli::init(None) {
+                None => match config::cli::init(Some(default_config_path)) {
                     Ok(path) => path,
                     Err(err) => {
                         eprintln!("Error generating or reading configuration: {err}");
@@ -91,7 +92,7 @@ async fn main() -> Result<()> {
                     response_wasi_module_path: None,
                     proxy_configuration_path: Some(proxy_configuration_path),
                     wasi_configuration_bytes: None,
-                    port: None,
+                    port,
                     protocol: Protocol::HttpForward,
                     tls: true,
                     address: "localhost".into(),
