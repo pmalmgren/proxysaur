@@ -1,4 +1,4 @@
-![](https://img.shields.io/github/checks-status/pmalmgren/proxysaur/main) ![](https://img.shields.io/github/v/release/pmalmgren/proxysaur) ![](https://img.shields.io/github/release-date/pmalmgren/proxysaur)  ![](https://img.shields.io/github/last-commit/pmalmgren/proxysaur) 
+![](https://img.shields.io/github/v/release/pmalmgren/proxysaur) ![](https://img.shields.io/github/release-date/pmalmgren/proxysaur)  ![](https://img.shields.io/github/last-commit/pmalmgren/proxysaur) 
 
 [Docs Page](https://proxysaur.us)
 
